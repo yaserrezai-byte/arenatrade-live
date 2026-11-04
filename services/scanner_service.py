@@ -64,6 +64,7 @@ class MarketScannerService:
             px = _fmt_px(float(sig["current_price"]))
             conf = float(sig["confidence"])
             score = float(sig["composite_score"])
+            rr_net = float(sig.get("risk_reward_tp2", 0.0))
 
             # Extract S/R, Trendline, Money Flow, RSI/MA, and Historical Comparison highlights
             reps = {rep["agent_id"]: rep.get("metrics", {}) for rep in sig.get("agent_reports", [])}
@@ -113,7 +114,7 @@ class MarketScannerService:
             htf_fa = htf_map.get(str(comp.get("htf_4h_regime", "NEUTRAL")), "نامشخص")
 
             lines.append(
-                f"{ic} <b>#{sym}</b> | جهت: <code>{d}</code> | اطمینان الگوریتمی: <code>{conf:.0f}/100</code> | امتیاز: <code>{score:+.1f}</code>{act_badge}\n"
+                f"{ic} <b>#{sym}</b> | جهت: <code>{d}</code> | اطمینان: <code>{conf:.0f}/100</code> | R:R خالص: <code>1:{rr_net:.2f}</code>{act_badge}\n"
                 f"💵 قیمت: <code>{px} USDT</code> | جریان خالص ۱ساعته: <code>{flow_str}</code>\n"
                 f"📐 روند 4H: <b>{htf_fa}</b> | RSI-1h: <code>{rsi_str}</code> | {ma_stack}{sr_str}{fib_str}{delta_str}"
             )
