@@ -108,6 +108,8 @@ class TelegramNotifierAgent:
 
     def format_market_analysis_message(self, sig: Dict[str, Any]) -> str:
         direction = sig["direction"]
+        risk_meta = sig.get("previous_comparison") or {}
+        target_basis = risk_meta.get("target_basis") or {}
         if direction == "LONG":
             header_icon = "🧠🟢"
             dir_fa = "LONG (خرید تعهدی)"
@@ -138,7 +140,8 @@ class TelegramNotifierAgent:
                 f"🎯 <b>تارگت دوم (TP2 - اصلی):</b> <code>${_fmt_price(sig['tp2'])}</code>",
                 f"🎯 <b>تارگت سوم (TP3 - موج‌سواری):</b> <code>${_fmt_price(sig['tp3'])}</code>",
                 f"🛑 <b>حد ضرر الزامی (SL):</b> <code>${_fmt_price(sig['stop_loss'])}</code>",
-                f"⚖️ <b>نسبت ریسک به ریوارد (TP2):</b> <code>1 : {sig['risk_reward_tp2']:.2f}</code> | ریسک مجاز: <code>{sig.get('risk_pct', 1.5)}%</code>",
+                f"⚖️ <b>R:R خالص محافظه‌کارانه تا TP2:</b> <code>1 : {sig['risk_reward_tp2']:.2f}</code> | از بدترین ورود و پس از هزینه تقریبی <code>{risk_meta.get('estimated_round_trip_cost_pct', 0.18):.2f}%</code>",
+                f"🧱 <b>مبنای تارگت‌ها:</b> <code>TP1={target_basis.get('tp1', '—')} | TP2={target_basis.get('tp2', '—')} | TP3={target_basis.get('tp3', '—')}</code> | ریسک مجاز: <code>{sig.get('risk_pct', 1.5)}%</code>",
             ]
         )
 
