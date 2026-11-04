@@ -1,6 +1,28 @@
+# Secrets and machine-local configuration
 .env
-data/
+.env.*
+!.env.example
+data/runtime_settings.json
+
+# Runtime state / databases
+data/*.db
+data/*.db-*
+data/*.sqlite*
+*.log
+
+# Python / tooling
 __pycache__/
-*.pyc
-*.db
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# User uploads and generated bundles
+uploads/
 *.zip
