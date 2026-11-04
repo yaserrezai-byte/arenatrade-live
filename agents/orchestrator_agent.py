@@ -191,6 +191,22 @@ class OrchestratorAgent:
             veto_reasons.append(
                 f"قیمت زنده {live_deviation_atr:.2f} ATR از آخرین کندل تاییدشده فاصله گرفته؛ برای جلوگیری از تعقیب قیمت باید منتظر تثبیت/پولبک ماند."
             )
+
+        # Mandatory confirmed 4H regime alignment. The 15m trigger is allowed to
+        # choose timing, but it can no longer open against or without the 4H trend.
+        trend_m = report_map["trend"].metrics
+        htf_bullish = bool(trend_m.get("htf_bullish", False))
+        htf_bearish = bool(trend_m.get("htf_bearish", False))
+        htf_regime = "BULLISH" if htf_bullish else ("BEARISH" if htf_bearish else "NEUTRAL")
+        if settings.get("REQUIRE_4H_TREND_ALIGNMENT", True):
+            if direction == "LONG" and not htf_bullish:
+                veto_reasons.append(
+                    "فیلتر روند ۴ساعته: روند 4H صعودی تایید نشده است؛ سیگنال LONG فقط تحت‌نظر می‌ماند."
+                )
+            elif direction == "SHORT" and not htf_bearish:
+                veto_reasons.append(
+                    "فیلتر روند ۴ساعته: روند 4H نزولی تایید نشده است؛ سیگنال SHORT فقط تحت‌نظر می‌ماند."
+                )
         room_up_atr = min(
             float(report_map["support_resistance"].metrics.get("room_up_atr", 2.0)),
             (r1 - curr_px) / max(atr, 1e-9),
@@ -286,7 +302,10 @@ class OrchestratorAgent:
                 "confirmed_primary_close": closed_candle_px,
                 "live_mark_price": curr_px,
                 "live_deviation_atr": round(live_deviation_atr, 3),
-                "data_policy": "CONFIRMED_CANDLES_PLUS_LIVE_MARK_WITH_CHASE_VETO",
+                "htf_4h_regime": htf_regime,
+                "htf_4h_alignment_required": bool(settings.get("REQUIRE_4H_TREND_ALIGNMENT", True)),
+                "safety_veto_reasons": veto_reasons,
+                "data_policy": "CONFIRMED_CANDLES_PLUS_LIVE_MARK_WITH_CHASE_AND_4H_ALIGNMENT_VETO",
             },
             agent_reports=reports,
             telegram_sent=False,
