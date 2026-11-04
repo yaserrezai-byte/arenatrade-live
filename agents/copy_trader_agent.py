@@ -168,87 +168,180 @@ class CopyTraderAgent(BaseAgent):
 
     async def monitor_active_trader(self, auto_emit_new_signals: bool = True) -> Dict[str, Any]:
         """
-        Polls the currently ACTIVE trader's live positions & closed fills:
-        1) Rotates trader if 2 consecutive losses occur.
-        2) Automatically emits & sends standalone Copy-Trader signals to Telegram for newly opened positions!
+        Polls the Top-3 Elite Whales (#1 ACTIVE Master + top 2 qualified Elite Whales with WR >= 58%):
+        1) Enforces the 2-consecutive-losses auto-rotation rule on every monitored whale.
+        2) Detects when a whale closes a previously signaled trade -> sends Telegram Exit Alert & unlocks re-entry.
+        3) Automatically emits & delivers standalone Copy-Trader signals to Telegram for every newly discovered position
+           (marking as signaled ONLY after confirmed Telegram HTTP 200 delivery!).
         """
-        active = db.get_active_trader()
-        if not active:
-            traders = await self.refresh_leaderboard_roster(force_reseed=True)
-            active = next((t for t in traders if t["status"] == "ACTIVE"), None)
-            if not active:
-                return {"active": None, "rotated": False, "emitted_signals": []}
+        all_traders = db.get_traders()
+        if not all_traders:
+            all_traders = await self.refresh_leaderboard_roster(force_reseed=True)
 
-        addr = active["address"]
-        last_tid = int(active.get("last_fill_tid") or 0)
+        active = next((t for t in all_traders if t["status"] == "ACTIVE"), None)
+        if not active and all_traders:
+            cand = next((t for t in all_traders if t["status"] != "ROTATED_OUT"), all_traders[0])
+            db.update_trader_state(cand["address"], status="ACTIVE", consecutive_losses=0)
+            all_traders = db.get_traders()
+            active = next((t for t in all_traders if t["status"] == "ACTIVE"), None)
+
+        if not active:
+            return {"status": "no_traders", "active": None, "rotated": False, "emitted_signals": []}
+
         max_losses = int(settings.get("COPY_TRADER_MAX_CONSECUTIVE_LOSSES", 2))
 
-        try:
-            open_pos, closed_events, win_rate, newest_tid = await hl_copy_source.fetch_trader_state_and_fills(addr)
-        except Exception:
-            return {"active": active, "rotated": False, "emitted_signals": []}
+        # Build Top-3 Elite Squad: #1 ACTIVE + up to 2 top STANDBY whales with high win-rate (>=58%) and <2 losses
+        elite_standby = [
+            t
+            for t in all_traders
+            if t["status"] == "STANDBY"
+            and t["address"] != active["address"]
+            and float(t.get("win_rate_pct", 0.0)) >= 58.0
+            and float(t.get("roi_month_pct", 0.0)) >= 40.0
+            and int(t.get("consecutive_losses", 0)) < max_losses
+        ][:2]
+        squad = [active] + elite_standby
 
-        consec_losses = int(active.get("consecutive_losses", 0))
-        copied_wins = int(active.get("copied_wins", 0))
-        copied_losses = int(active.get("copied_losses", 0))
+        emitted: List[Dict[str, Any]] = []
+        rotated_any = False
+        rotation_event = None
 
-        # 1. Check newly closed fills for 2-Consecutive-Mistakes rule
-        if last_tid > 0 and closed_events:
-            new_events = [e for e in closed_events if int(e["tid"]) > last_tid]
-            new_events.sort(key=lambda x: x["time"])
-            for ev in new_events:
-                if ev["closed_pnl"] < 0:
-                    consec_losses += 1
-                    copied_losses += 1
-                    if consec_losses >= max_losses:
-                        rot = await self._rotate_active_trader(
-                            old_trader=active,
-                            consec_losses=consec_losses,
-                            copied_wins=copied_wins,
-                            copied_losses=copied_losses,
-                            latest_tid=max(newest_tid, ev["tid"]),
-                            open_pos=open_pos,
-                            closed_events=closed_events[:12],
-                            reason_fa=f"بسته شدن معامله {ev['coin']} با ضرر ${abs(ev['closed_pnl']):,.2f} (دومین ضرر متوالی)",
+        for idx, whale in enumerate(squad):
+            is_primary = idx == 0
+            addr = whale["address"]
+            last_tid = int(whale.get("last_fill_tid") or 0)
+
+            try:
+                open_pos, closed_events, win_rate, newest_tid = await hl_copy_source.fetch_trader_state_and_fills(addr)
+            except Exception:
+                continue
+
+            consec_losses = int(whale.get("consecutive_losses", 0))
+            copied_wins = int(whale.get("copied_wins", 0))
+            copied_losses = int(whale.get("copied_losses", 0))
+
+            # 1. Check newly closed fills for 2-Consecutive-Mistakes rule
+            whale_rotated = False
+            if last_tid > 0 and closed_events:
+                new_events = [e for e in closed_events if int(e["tid"]) > last_tid]
+                new_events.sort(key=lambda x: x["time"])
+                for ev in new_events:
+                    if ev["closed_pnl"] < 0:
+                        consec_losses += 1
+                        copied_losses += 1
+                        if consec_losses >= max_losses:
+                            if is_primary:
+                                rot = await self._rotate_active_trader(
+                                    old_trader=whale,
+                                    consec_losses=consec_losses,
+                                    copied_wins=copied_wins,
+                                    copied_losses=copied_losses,
+                                    latest_tid=max(newest_tid, ev["tid"]),
+                                    open_pos=open_pos,
+                                    closed_events=closed_events[:12],
+                                    reason_fa=f"بسته شدن معامله {ev['coin']} با ضرر ${abs(ev['closed_pnl']):,.2f} (دومین ضرر متوالی)",
+                                )
+                                rotated_any = True
+                                rotation_event = rot
+                            else:
+                                db.update_trader_state(
+                                    addr,
+                                    status="ROTATED_OUT",
+                                    consecutive_losses=consec_losses,
+                                    copied_wins=copied_wins,
+                                    copied_losses=copied_losses,
+                                    latest_tid=max(newest_tid, ev["tid"]),
+                                    open_positions=open_pos,
+                                    recent_closed_trades=closed_events[:12],
+                                )
+                            whale_rotated = True
+                            break
+                    elif ev["closed_pnl"] > 0:
+                        consec_losses = 0
+                        copied_wins += 1
+
+            if whale_rotated:
+                continue
+
+            effective_tid = max(last_tid, newest_tid)
+            db.update_trader_state(
+                addr,
+                consecutive_losses=consec_losses,
+                copied_wins=copied_wins,
+                copied_losses=copied_losses,
+                last_fill_tid=effective_tid,
+                open_positions=open_pos,
+                recent_closed_trades=closed_events[:12],
+            )
+
+            # 2. Detect closed positions that were previously signaled -> send Exit Alert & unlock re-entry!
+            current_open_keys = {f"{addr}:{p['coin']}:{p['direction']}" for p in open_pos}
+            prev_signaled = db.get_copy_signaled_positions_for_trader(addr)
+            for ps in prev_signaled:
+                if ps["pos_key"] not in current_open_keys:
+                    db.delete_copy_signaled_position(ps["pos_key"])
+                    if auto_emit_new_signals and settings.get("TELEGRAM_AUTO_SEND", True):
+                        match_ev = next(
+                            (e for e in closed_events[:5] if str(e.get("coin", "")).upper() == str(ps["coin"]).upper()),
+                            None,
                         )
-                        return {"active": rot["new_active"], "rotated": True, "rotation_event": rot, "emitted_signals": []}
-                elif ev["closed_pnl"] > 0:
-                    consec_losses = 0
-                    copied_wins += 1
+                        pnl_txt = (
+                            f" | نتیجه نهنگ: <code>${match_ev['closed_pnl']:+,.2f}</code>"
+                            if match_ev and "closed_pnl" in match_ev
+                            else ""
+                        )
+                        exit_msg = (
+                            f"🔔🐋 <b>هشدار خروج کپی‌تریدر | بستن پوزیشن #{ps['coin']}USDT</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                            f"👤 تریدر مرجع <code>{whale['label']}</code> پوزیشن <b>{ps['direction']}</b> روی <b>#{ps['coin']}</b> "
+                            f"(ورود <code>${self.fmt_px(float(ps['entry_price']))}</code>) را بست{pnl_txt}.\n"
+                            f"💡 در صورت همراهی با این سیگنال، سیو سود / بستن پوزیشن بررسی شود."
+                        )
+                        await telegram_agent.send_html_message(
+                            exit_msg, msg_type="COPY_EXIT", symbol=ps["coin"]
+                        )
 
-        effective_tid = max(last_tid, newest_tid)
-        db.update_trader_state(
-            addr,
-            consecutive_losses=consec_losses,
-            copied_wins=copied_wins,
-            copied_losses=copied_losses,
-            last_fill_tid=effective_tid,
-            open_positions=open_pos,
-            recent_closed_trades=closed_events[:12],
-        )
+            # 3. Check open positions & dispatch standalone Copy-Trade signals for every newly discovered position
+            if auto_emit_new_signals and open_pos:
+                refreshed_whale = next((t for t in db.get_traders() if t["address"] == addr), whale)
+                for pos in open_pos[:4]:
+                    val_usd = float(pos.get("position_value_usd", 0.0))
+                    roe_pct = abs(float(pos.get("roe_pct", 0.0)))
+                    if val_usd < 8000:
+                        continue
+                    pos_key = f"{addr}:{pos['coin']}:{pos['direction']}"
+                    prev_rec = db.get_copy_signaled_position(pos_key)
+                    cur_entry = float(pos.get("entry_price") or 0.0)
+                    entry_shifted = (
+                        abs(cur_entry - float(prev_rec["entry_price"])) / max(float(prev_rec["entry_price"]), 1e-9) >= 0.015
+                        if prev_rec and float(prev_rec.get("entry_price") or 0) > 0
+                        else False
+                    )
+
+                    if (not prev_rec or entry_shifted) and roe_pct <= 95.0:
+                        sig_dict = await self.build_copy_signal(refreshed_whale, pos)
+                        db.save_signal(sig_dict)
+                        if settings.get("TELEGRAM_AUTO_SEND", True):
+                            tg_res = await telegram_agent.send_signal(sig_dict)
+                            if tg_res.get("ok"):
+                                sig_dict["telegram_sent"] = True
+                                db.mark_copy_position_signaled(
+                                    pos_key, addr, pos["coin"], pos["direction"], cur_entry
+                                )
+                        else:
+                            db.mark_copy_position_signaled(
+                                pos_key, addr, pos["coin"], pos["direction"], cur_entry
+                            )
+                        emitted.append(sig_dict)
 
         updated_active = db.get_active_trader() or active
-        emitted: List[Dict[str, Any]] = []
-
-        # 2. Check open positions & dispatch independent Copy-Trade signals for any new position
-        if auto_emit_new_signals and open_pos:
-            for pos in open_pos[:5]:  # cap top 5 largest positions by USD value
-                if float(pos.get("position_value_usd", 0.0)) < 5000:
-                    continue
-                pos_key = f"{addr}:{pos['coin']}:{pos['direction']}"
-                if not db.is_copy_position_signaled(pos_key):
-                    sig_dict = await self.build_copy_signal(updated_active, pos)
-                    db.save_signal(sig_dict)
-                    db.mark_copy_position_signaled(
-                        pos_key, addr, pos["coin"], pos["direction"], pos["entry_price"]
-                    )
-                    if settings.get("TELEGRAM_AUTO_SEND", True):
-                        tg_res = await telegram_agent.send_signal(sig_dict)
-                        if tg_res.get("ok"):
-                            sig_dict["telegram_sent"] = True
-                    emitted.append(sig_dict)
-
-        return {"active": updated_active, "rotated": False, "emitted_signals": emitted}
+        return {
+            "status": "ok",
+            "active": updated_active,
+            "rotated": rotated_any,
+            "rotation_event": rotation_event,
+            "emitted_signals": emitted,
+        }
 
     async def emit_copy_signals_now(
         self, coin: Optional[str] = None, send_to_telegram: bool = True
