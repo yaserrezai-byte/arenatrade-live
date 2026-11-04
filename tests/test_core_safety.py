@@ -3,9 +3,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import numpy as np
 import pandas as pd
 from pydantic import ValidationError
 
+from agents.sr_agent import SupportResistanceAgent
 from core.database import Database
 from core.models import FuturesSignal
 from data_sources.market_data import MarketDataHub
@@ -108,6 +110,41 @@ class SummaryIntegrityTests(unittest.TestCase):
         self.assertIn("S1:<code>95", text)
         self.assertIn("Δقیمت:<code>+1.25%", text)
         self.assertIn("روند 4H: <b>صعودی", text)
+
+
+class FibonacciTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def frame(up: bool, n: int = 210):
+        close = np.linspace(100.0, 150.0, n) if up else np.linspace(150.0, 100.0, n)
+        return pd.DataFrame({
+            "timestamp": np.arange(n) * 3_600_000,
+            "open": close - (0.2 if up else -0.2),
+            "high": close + 1.0,
+            "low": close - 1.0,
+            "close": close,
+            "volume": np.full(n, 100.0),
+            "quote_volume": np.full(n, 100_000.0),
+        })
+
+    async def test_bullish_fibonacci_geometry(self):
+        df = self.frame(True)
+        rep = await SupportResistanceAgent().analyze(
+            "BTC", {"df_primary": df, "df_htf": df.tail(160).reset_index(drop=True), "derivatives": {}}
+        )
+        fib = rep.metrics["fibonacci"]
+        self.assertEqual(fib["impulse_direction"], "BULLISH")
+        self.assertGreater(fib["levels"]["23.6%"], fib["levels"]["78.6%"])
+        self.assertGreater(fib["extension_1.618"], fib["swing_high"])
+
+    async def test_bearish_fibonacci_geometry(self):
+        df = self.frame(False)
+        rep = await SupportResistanceAgent().analyze(
+            "BTC", {"df_primary": df, "df_htf": df.tail(160).reset_index(drop=True), "derivatives": {}}
+        )
+        fib = rep.metrics["fibonacci"]
+        self.assertEqual(fib["impulse_direction"], "BEARISH")
+        self.assertLess(fib["levels"]["23.6%"], fib["levels"]["78.6%"])
+        self.assertLess(fib["extension_1.618"], fib["swing_low"])
 
 
 class PendingDeliveryTests(unittest.TestCase):
