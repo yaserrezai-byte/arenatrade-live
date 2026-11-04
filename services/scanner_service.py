@@ -35,6 +35,8 @@ class MarketScannerService:
         self.last_scan_ts: Optional[int] = None
         self.last_scan_results: List[Dict[str, Any]] = []
         self.is_scanning_now: bool = False
+        self.scan_started_ts: Optional[int] = None
+        self.last_scan_error_count: int = 0
 
     async def initialize(self) -> None:
         try:
@@ -44,11 +46,14 @@ class MarketScannerService:
 
     def _format_auto_scan_report_html(self, results: List[Dict[str, Any]], sent_symbols: List[str]) -> str:
         ts_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        expected = len(settings.watchlist)
         lines = [
             "⏱📡 <b>گزارش اسکن خودکار ۱۵ دقیقه‌ای بازار فیوچرز (۸ ایجنت تحلیل)</b>",
-            f"🕒 زمان اسکن: <code>{ts_str}</code>",
+            f"🕒 زمان اسکن: <code>{ts_str}</code> | پوشش: <code>{len(results)}/{expected} ارز</code>",
             "━━━━━━━━━━━━━━━━━━━━",
         ]
+        if len(results) < expected:
+            lines.append(f"⚠️ <b>هشدار کیفیت اجرا:</b> تحلیل {expected - len(results)} ارز کامل نشد؛ ناظر در چرخه بعدی مجدداً تلاش می‌کند.")
         icon_map = {"LONG": "🟢", "SHORT": "🔴", "NEUTRAL": "⚪️"}
 
         for r in results:
@@ -66,19 +71,19 @@ class MarketScannerService:
             ind = reps.get("indicators", {})
             sr = reps.get("support_resistance", {})
 
-            net_1h = float(mf.get("net_delta_1h_usd", 0.0)) / 1e6
-            flow_str = f"{net_1h:+.2f}M$"
-            rsi_1h = ind.get("rsi_1h", ind.get("rsi14"))
+            net_1h = float(mf.get("net_inflow_1h_usd", 0.0)) / 1e6
+            flow_str = f"{net_1h:+.2f}M USD"
+            rsi_1h = ind.get("rsi_14")
             rsi_str = f"{float(rsi_1h):.1f}" if rsi_1h is not None else "—"
-            ma_stack = ind.get("ma_stack_fa", "")
+            ma_stack = str(ind.get("ma_status_fa", ""))
 
-            s1 = sr.get("nearest_support")
-            r1 = sr.get("nearest_resistance")
+            s1 = sr.get("s1")
+            r1 = sr.get("r1")
             sr_str = ""
             if s1 and r1:
                 sr_str = f" | S1:<code>{_fmt_px(float(s1))}</code> R1:<code>{_fmt_px(float(r1))}</code>"
 
-            comp = sig.get("historical_comparison") or {}
+            comp = sig.get("previous_comparison") or {}
             delta_str = ""
             if comp.get("has_previous"):
                 dp = float(comp.get("price_change_pct", 0.0))
@@ -90,8 +95,9 @@ class MarketScannerService:
             )
 
             lines.append(
-                f"{ic} <b>#{sym}</b>: <code>{d}</code> ({conf:.0f}% | امتیاز <code>{score:+.1f}</code>) — قیمت: <code>${px}</code>{act_badge}\n"
-                f"   ↳ پول ۱ساعته: <code>{flow_str}</code> | RSI: <code>{rsi_str}</code> {ma_stack}{sr_str}{delta_str}"
+                f"{ic} <b>#{sym}</b> | جهت: <code>{d}</code> | اطمینان الگوریتمی: <code>{conf:.0f}/100</code> | امتیاز: <code>{score:+.1f}</code>{act_badge}\n"
+                f"💵 قیمت: <code>{px} USDT</code> | جریان خالص ۱ساعته: <code>{flow_str}</code>\n"
+                f"📐 RSI-1h: <code>{rsi_str}</code> | {ma_stack}{sr_str}{delta_str}"
             )
 
         lines.append("━━━━━━━━━━━━━━━━━━━━")
@@ -116,6 +122,7 @@ class MarketScannerService:
             return self.last_scan_results
 
         self.is_scanning_now = True
+        self.scan_started_ts = int(time.time())
         coins = symbols or settings.watchlist
         results: List[Dict[str, Any]] = []
         sent_symbols: List[str] = []
@@ -124,7 +131,10 @@ class MarketScannerService:
         async def _scan_one(c: str) -> Optional[Dict[str, Any]]:
             async with sem:
                 try:
-                    res = await orchestrator_agent.analyze_symbol(c, send_to_telegram=False)
+                    res = await asyncio.wait_for(
+                        orchestrator_agent.analyze_symbol(c, send_to_telegram=False),
+                        timeout=120.0,
+                    )
                     sig = res["signal"]
                     key = f"{sig['symbol']}:{sig['direction']}"
                     now = time.time()
@@ -163,17 +173,16 @@ class MarketScannerService:
         try:
             raw_list = await asyncio.gather(*[_scan_one(c) for c in coins])
             results = [r for r in raw_list if r is not None]
+            self.last_scan_error_count = max(0, len(coins) - len(results))
             results.sort(key=lambda x: x["signal"]["confidence"], reverse=True)
             self.last_scan_results = results
             self.last_scan_ts = int(time.time())
 
-            is_hourly_pulse = datetime.now(timezone.utc).minute < 15
             if (
                 results
                 and send_summary_to_telegram
                 and settings.get("TELEGRAM_AUTO_SEND", True)
                 and settings.get("SEND_SCAN_SUMMARY_REPORT", True)
-                and (bool(sent_symbols) or is_hourly_pulse)
             ):
                 from agents.telegram_agent import DEFAULT_SIGNAL_INLINE_KEYBOARD, telegram_agent
 
@@ -187,6 +196,7 @@ class MarketScannerService:
             return results
         finally:
             self.is_scanning_now = False
+            self.scan_started_ts = None
 
     async def _sleep_until_wallclock(self, target_ts: float) -> None:
         """Wall-clock aware sleep so container pause/resume never freezes scheduling."""
