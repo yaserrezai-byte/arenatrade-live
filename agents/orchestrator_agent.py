@@ -151,33 +151,105 @@ class OrchestratorAgent:
         r1 = float(report_map["support_resistance"].metrics.get("r1", curr_px + 1.5 * atr))
         r2 = float(report_map["support_resistance"].metrics.get("r2", curr_px + 3.0 * atr))
 
+        min_rr = float(settings.get("MIN_RISK_REWARD_RATIO", 2.0))
+        cost_pct = float(settings.get("ESTIMATED_ROUND_TRIP_COST_PCT", 0.18))
+        fib_m = report_map["support_resistance"].metrics.get("fibonacci") or {}
+        fib_ext_1272 = float(fib_m.get("extension_1.272") or 0.0)
+        fib_ext_1618 = float(fib_m.get("extension_1.618") or 0.0)
+        structural_tp2_available = False
+        target_basis = {"tp1": "ATR_FALLBACK", "tp2": "ATR_FALLBACK", "tp3": "ATR_FALLBACK"}
+
         if direction == "LONG" or (direction == "NEUTRAL" and composite_score >= 0):
             entry_low = curr_px - 0.22 * atr
             entry_high = curr_px + 0.08 * atr
-            # Place SL safely below S1 (if reasonably close) or 1.65*ATR below entry
+            # Worst-case fill for LONG is the upper edge of the entry range.
+            conservative_entry = entry_high
             structural_sl = s1 - 0.35 * atr
             atr_sl = curr_px - 1.75 * atr
             stop_loss = structural_sl if (0.6 * atr <= (curr_px - structural_sl) <= 2.8 * atr) else atr_sl
-            risk_dist = max(curr_px - stop_loss, 0.5 * atr)
+            risk_dist = max(conservative_entry - stop_loss, 0.5 * atr)
+            cost_abs = conservative_entry * cost_pct / 100.0
+            effective_risk = risk_dist + cost_abs
 
-            tp1 = max(curr_px + 1.25 * risk_dist, min(r1 * 0.9985, curr_px + 1.6 * risk_dist))
-            tp2 = max(curr_px + 2.15 * risk_dist, r1 if r1 > tp1 * 1.004 else curr_px + 2.2 * risk_dist)
-            tp3 = max(curr_px + 3.30 * risk_dist, r2 if r2 > tp2 * 1.005 else curr_px + 3.4 * risk_dist)
+            candidates = sorted(
+                {
+                    round(px, 10): label
+                    for px, label in (
+                        (r1, "R1"), (r2, "R2"),
+                        (fib_ext_1272, "FIB_EXT_1.272"),
+                        (fib_ext_1618, "FIB_EXT_1.618"),
+                    )
+                    if px > conservative_entry + 0.15 * atr
+                }.items()
+            )
+
+            def long_net_rr(px: float) -> float:
+                return max(0.0, (px - conservative_entry - cost_abs) / max(effective_risk, 1e-9))
+
+            tp1_item = next(((px, label) for px, label in candidates if long_net_rr(px) >= 0.8), None)
+            tp2_item = next(((px, label) for px, label in candidates if long_net_rr(px) >= min_rr), None)
+            if tp1_item and (not tp2_item or tp1_item[0] < tp2_item[0]):
+                tp1, target_basis["tp1"] = tp1_item
+            else:
+                tp1 = conservative_entry + 0.9 * effective_risk + cost_abs
+            if tp2_item:
+                tp2, target_basis["tp2"] = tp2_item
+                structural_tp2_available = True
+            else:
+                tp2 = conservative_entry + min_rr * effective_risk + cost_abs
+            tp3_item = next(((px, label) for px, label in candidates if px > tp2 + 0.15 * atr), None)
+            if tp3_item:
+                tp3, target_basis["tp3"] = tp3_item
+            else:
+                tp3 = tp2 + max(effective_risk, 0.8 * atr)
             invalidation_fa = f"تثبیت کندل {tf_primary} زیر سطح حمایتی و حد ضرر ${self.price_agent.fmt_px(stop_loss)} سناریوی صعودی را باطل می‌کند."
+            rr_tp2 = round(long_net_rr(tp2), 2)
         else:
             entry_low = curr_px - 0.08 * atr
             entry_high = curr_px + 0.22 * atr
+            # Worst-case fill for SHORT is the lower edge of the entry range.
+            conservative_entry = entry_low
             structural_sl = r1 + 0.35 * atr
             atr_sl = curr_px + 1.75 * atr
             stop_loss = structural_sl if (0.6 * atr <= (structural_sl - curr_px) <= 2.8 * atr) else atr_sl
-            risk_dist = max(stop_loss - curr_px, 0.5 * atr)
+            risk_dist = max(stop_loss - conservative_entry, 0.5 * atr)
+            cost_abs = conservative_entry * cost_pct / 100.0
+            effective_risk = risk_dist + cost_abs
 
-            tp1 = min(curr_px - 1.25 * risk_dist, max(s1 * 1.0015, curr_px - 1.6 * risk_dist))
-            tp2 = min(curr_px - 2.15 * risk_dist, s1 if s1 < tp1 * 0.996 else curr_px - 2.2 * risk_dist)
-            tp3 = min(curr_px - 3.30 * risk_dist, s2 if s2 < tp2 * 0.995 else curr_px - 3.4 * risk_dist)
+            candidates = sorted(
+                {
+                    round(px, 10): label
+                    for px, label in (
+                        (s1, "S1"), (s2, "S2"),
+                        (fib_ext_1272, "FIB_EXT_1.272"),
+                        (fib_ext_1618, "FIB_EXT_1.618"),
+                    )
+                    if 0 < px < conservative_entry - 0.15 * atr
+                }.items(),
+                reverse=True,
+            )
+
+            def short_net_rr(px: float) -> float:
+                return max(0.0, (conservative_entry - px - cost_abs) / max(effective_risk, 1e-9))
+
+            tp1_item = next(((px, label) for px, label in candidates if short_net_rr(px) >= 0.8), None)
+            tp2_item = next(((px, label) for px, label in candidates if short_net_rr(px) >= min_rr), None)
+            if tp1_item and (not tp2_item or tp1_item[0] > tp2_item[0]):
+                tp1, target_basis["tp1"] = tp1_item
+            else:
+                tp1 = conservative_entry - 0.9 * effective_risk - cost_abs
+            if tp2_item:
+                tp2, target_basis["tp2"] = tp2_item
+                structural_tp2_available = True
+            else:
+                tp2 = conservative_entry - min_rr * effective_risk - cost_abs
+            tp3_item = next(((px, label) for px, label in candidates if px < tp2 - 0.15 * atr), None)
+            if tp3_item:
+                tp3, target_basis["tp3"] = tp3_item
+            else:
+                tp3 = max(1e-9, tp2 - max(effective_risk, 0.8 * atr))
             invalidation_fa = f"تثبیت کندل {tf_primary} بالای مقاومت و حد ضرر ${self.price_agent.fmt_px(stop_loss)} سناریوی نزولی را باطل می‌کند."
-
-        rr_tp2 = round(abs(tp2 - curr_px) / max(abs(curr_px - stop_loss), 1e-9), 2)
+            rr_tp2 = round(short_net_rr(tp2), 2)
 
         # Confidence Score (0..97)
         agreement_count = long_votes if direction == "LONG" else (short_votes if direction == "SHORT" else max(long_votes, short_votes))
@@ -186,6 +258,10 @@ class OrchestratorAgent:
         # Safety Vetoes (Black swan news, trading into S/R, or chasing a live price
         # that has moved too far from the last confirmed primary candle).
         veto_reasons = [r.veto_reason_fa for r in reports if r.veto and r.veto_reason_fa]
+        if direction in ("LONG", "SHORT") and not structural_tp2_available:
+            veto_reasons.append(
+                f"فیلتر R:R واقعی: هیچ هدف ساختاری معتبر (S/R یا اکستنشن فیبوناچی) با نسبت خالص حداقل 1:{min_rr:.1f} پس از هزینه‌ها وجود ندارد."
+            )
         live_deviation_atr = abs(curr_px - closed_candle_px) / max(atr, 1e-9)
         if live_mark_px > 0 and live_deviation_atr > 0.90:
             veto_reasons.append(
@@ -237,7 +313,6 @@ class OrchestratorAgent:
         signal_source = "MARKET_ANALYSIS"
 
         min_conf = float(settings.get("MIN_CONFIDENCE_SCORE", 60.0))
-        min_rr = float(settings.get("MIN_RISK_REWARD_RATIO", 1.6))
         actionable = (
             direction in ("LONG", "SHORT")
             and confidence >= min_conf
@@ -306,6 +381,11 @@ class OrchestratorAgent:
                 "htf_4h_regime": htf_regime,
                 "htf_4h_alignment_required": bool(settings.get("REQUIRE_4H_TREND_ALIGNMENT", True)),
                 "safety_veto_reasons": veto_reasons,
+                "risk_reward_method": "WORST_ENTRY_NET_OF_ESTIMATED_COSTS_TO_STRUCTURAL_TARGET",
+                "estimated_round_trip_cost_pct": cost_pct,
+                "conservative_entry_price": round(conservative_entry, 8),
+                "structural_tp2_available": structural_tp2_available,
+                "target_basis": target_basis,
                 "data_policy": "CONFIRMED_CANDLES_PLUS_LIVE_MARK_WITH_CHASE_AND_4H_ALIGNMENT_VETO",
             },
             agent_reports=reports,
