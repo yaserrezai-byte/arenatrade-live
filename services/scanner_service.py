@@ -191,10 +191,23 @@ class MarketScannerService:
     async def _watchlist_loop(self) -> None:
         await asyncio.sleep(3)
         if settings.get("AUTO_SCAN_ENABLED", True):
+            should_scan_immediately = True
             try:
-                await self.scan_watchlist_once(settings.watchlist, send_summary_to_telegram=True)
+                recent = db.get_last_sent_market_signal("BTC", "SHORT") or db.get_last_sent_market_signal("BTC", "LONG")
+                with db._lock, db._connect() as conn:
+                    row = conn.execute(
+                        "SELECT MAX(created_at) AS last_ts FROM signals WHERE signal_source = 'MARKET_ANALYSIS'"
+                    ).fetchone()
+                    if row and row["last_ts"] and (time.time() - float(row["last_ts"])) < 720:
+                        should_scan_immediately = False
             except Exception:
                 pass
+
+            if should_scan_immediately:
+                try:
+                    await self.scan_watchlist_once(settings.watchlist, send_summary_to_telegram=True)
+                except Exception:
+                    pass
 
         while self._running:
             interval = max(60, int(settings.get("AUTO_SCAN_INTERVAL_SEC", 900)))
