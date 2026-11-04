@@ -48,7 +48,8 @@ class SettingsManager:
         "MAX_LEVERAGE": 10,
         "DEFAULT_RISK_PER_TRADE_PCT": 1.5,
         "MIN_CONFIDENCE_SCORE": 60,
-        "MIN_RISK_REWARD_RATIO": 1.6,
+        "MIN_RISK_REWARD_RATIO": 2.0,
+        "ESTIMATED_ROUND_TRIP_COST_PCT": 0.18,
         "COPY_TRADER_MAX_CONSECUTIVE_LOSSES": 2,
         "COPY_TRADER_MIN_EQUITY_USD": 50000.0,
         "COPY_TRADER_ROSTER_SIZE": 12,
@@ -79,6 +80,7 @@ class SettingsManager:
     FLOAT_KEYS = {
         "DEFAULT_RISK_PER_TRADE_PCT",
         "MIN_RISK_REWARD_RATIO",
+        "ESTIMATED_ROUND_TRIP_COST_PCT",
         "COPY_TRADER_MIN_EQUITY_USD",
     }
     SECRET_KEYS = {
