@@ -12,13 +12,20 @@ class MoneyFlowAgent(BaseAgent):
     category_fa = "خالص جریان پول دلاری، CVD، MFI، Open Interest و Funding"
 
     @staticmethod
-    def _calc_signed_usd_flow(df: pd.DataFrame, bars: int) -> float:
+    def _estimate_usd_flow(df: pd.DataFrame, bars: int) -> tuple[float, float, float]:
+        """Estimate buy/sell pressure from close location inside each candle.
+
+        This is explicitly an OHLCV proxy, not exchange-reported taker flow. Returning
+        buy, sell and net separately prevents the UI from presenting a net proxy as an
+        exact on-chain/exchange cash-flow measurement.
+        """
         sub = df.tail(bars)
         rng = (sub["high"] - sub["low"]).replace(0, 1e-9)
-        buy_ratio = (sub["close"] - sub["low"]) / rng  # 0..1
+        buy_ratio = ((sub["close"] - sub["low"]) / rng).clip(0.0, 1.0)
         qvol = sub["quote_volume"] if "quote_volume" in sub else (sub["volume"] * sub["close"])
-        signed = qvol * (2.0 * buy_ratio - 1.0)
-        return float(signed.sum())
+        buy_usd = float((qvol * buy_ratio).sum())
+        sell_usd = float((qvol * (1.0 - buy_ratio)).sum())
+        return buy_usd, sell_usd, buy_usd - sell_usd
 
     async def analyze(self, symbol: str, context: Dict[str, Any]) -> AgentReport:
         df: pd.DataFrame = context["df_primary"]
@@ -50,9 +57,9 @@ class MoneyFlowAgent(BaseAgent):
         vwap_diff_pct = ((curr_px - vwap_24) / max(vwap_24, 1e-9)) * 100.0
 
         # 4. Explicit Dollar Net Inflow / Outflow (15m, 1h, and 4-bar window)
-        net_15m_usd = self._calc_signed_usd_flow(df_ltf, 1)
-        net_1h_usd = self._calc_signed_usd_flow(df_ltf, 4)  # 4 x 15m = 1 hour exact
-        net_4h_usd = self._calc_signed_usd_flow(df, 4)
+        buy_15m_usd, sell_15m_usd, net_15m_usd = self._estimate_usd_flow(df_ltf, 1)
+        buy_1h_usd, sell_1h_usd, net_1h_usd = self._estimate_usd_flow(df_ltf, 4)  # 4 x 15m
+        buy_4h_usd, sell_4h_usd, net_4h_usd = self._estimate_usd_flow(df, 4)
 
         rng = (high - low).replace(0, 1e-9)
         buy_ratio = (close - low) / rng
@@ -83,7 +90,7 @@ class MoneyFlowAgent(BaseAgent):
         flow_1h_tag = "ورود خالص پول 🟢" if net_1h_usd >= 0 else "خروج خالص پول 🔴"
         flow_15m_tag = "ورود" if net_15m_usd >= 0 else "خروج"
         bullets.append(
-            f"{flow_1h_tag}: در ۱ ساعت اخیر {net_1h_usd/1e6:+,.2f}M$ و در کندل ۱۵ دقیقه جاری {net_15m_usd/1e6:+,.2f}M$ ({flow_15m_tag}) ثبت شده است (روند OBV: {'صعودی' if obv_bullish else 'نزولی'})."
+            f"برآورد {flow_1h_tag}: در ۱ ساعت اخیر {net_1h_usd/1e6:+,.2f}M$ و در آخرین کندل بسته‌شده ۱۵ دقیقه‌ای {net_15m_usd/1e6:+,.2f}M$ ({flow_15m_tag})؛ این ارقام پروکسی OHLCV هستند، نه جریان تیک‌به‌تیک (روند OBV: {'صعودی' if obv_bullish else 'نزولی'})."
         )
 
         # VWAP institutional benchmark
@@ -159,9 +166,16 @@ class MoneyFlowAgent(BaseAgent):
             summary_fa=summary,
             bullets_fa=bullets[:4],
             metrics={
+                "estimated_buy_15m_usd": round(buy_15m_usd, 0),
+                "estimated_sell_15m_usd": round(sell_15m_usd, 0),
                 "net_inflow_15m_usd": round(net_15m_usd, 0),
+                "estimated_buy_1h_usd": round(buy_1h_usd, 0),
+                "estimated_sell_1h_usd": round(sell_1h_usd, 0),
                 "net_inflow_1h_usd": round(net_1h_usd, 0),
+                "estimated_buy_4h_usd": round(buy_4h_usd, 0),
+                "estimated_sell_4h_usd": round(sell_4h_usd, 0),
                 "net_inflow_4h_usd": round(net_4h_usd, 0),
+                "flow_method": "OHLCV_CLOSE_LOCATION_ESTIMATE",
                 "obv_trend": "BULLISH" if obv_bullish else "BEARISH",
                 "mfi_14": round(mfi, 1),
                 "vwap_24": round(vwap_24, 6),
