@@ -1,8 +1,6 @@
 name: Arenatrade 15m Auto-Scanner & Copy-Trader
 
 on:
-  schedule:
-    - cron: "7 */2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -28,7 +26,11 @@ jobs:
       - name: Restore SQLite memory (15m Historical Comparison & Copy-Trader 2-Strike State)
         uses: actions/cache/restore@v4
         with:
-          path: data/futures_intelligence.db
+          path: |
+            data/futures_intelligence.db
+            data/futures_intelligence.db-journal
+            data/futures_intelligence.db-wal
+            data/futures_intelligence.db-shm
           key: arenatrade-db-${{ github.run_id }}
           restore-keys: |
             arenatrade-db-
@@ -54,7 +56,11 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: data/futures_intelligence.db
+          path: |
+            data/futures_intelligence.db
+            data/futures_intelligence.db-journal
+            data/futures_intelligence.db-wal
+            data/futures_intelligence.db-shm
           key: arenatrade-db-${{ github.run_id }}
 
       - name: Weekly keepalive to prevent GitHub 60-day inactivity pause
@@ -70,7 +76,7 @@ jobs:
           fi
 
       - name: Seamlessly relay next 2h45m cloud cycle (zero-gap 24/7 execution)
-        if: always()
+        if: success()
         env:
           GH_PAT: ${{ secrets.GH_WORKFLOW_TOKEN }}
         run: |
