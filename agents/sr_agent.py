@@ -226,14 +226,52 @@ class SupportResistanceAgent(BaseAgent):
             if htf_l[i] == np.min(htf_l[i - 2 : i + 3]):
                 raw_pivots.append(float(htf_l[i]))
 
-        # 2. Fibonacci Retracement over 80-bar impulse
-        swing_hi = float(np.max(h[-80:]))
-        swing_lo = float(np.min(l[-80:]))
-        fib_diff = swing_hi - swing_lo
-        fib_382 = swing_hi - 0.382 * fib_diff
-        fib_500 = swing_hi - 0.500 * fib_diff
-        fib_618 = swing_hi - 0.618 * fib_diff
-        raw_pivots.extend([swing_hi, swing_lo, fib_382, fib_500, fib_618])
+        # 2. Direction-aware Fibonacci retracement & extension over the latest 80-bar impulse.
+        # If the low happened before the high, the impulse is bullish and retracements
+        # are measured downward from the high. If the high came first, vice versa.
+        recent_h = h[-80:]
+        recent_l = l[-80:]
+        hi_rel_idx = int(np.argmax(recent_h))
+        lo_rel_idx = int(np.argmin(recent_l))
+        swing_hi = float(recent_h[hi_rel_idx])
+        swing_lo = float(recent_l[lo_rel_idx])
+        fib_diff = max(swing_hi - swing_lo, 1e-9)
+        fib_impulse = "BULLISH" if lo_rel_idx < hi_rel_idx else "BEARISH"
+        fib_ratios = (0.236, 0.382, 0.500, 0.618, 0.650, 0.786)
+        if fib_impulse == "BULLISH":
+            fib_levels = {r: swing_hi - r * fib_diff for r in fib_ratios}
+            fib_ext_1272 = swing_hi + 0.272 * fib_diff
+            fib_ext_1618 = swing_hi + 0.618 * fib_diff
+        else:
+            fib_levels = {r: swing_lo + r * fib_diff for r in fib_ratios}
+            fib_ext_1272 = swing_lo - 0.272 * fib_diff
+            fib_ext_1618 = swing_lo - 0.618 * fib_diff
+
+        fib_236 = fib_levels[0.236]
+        fib_382 = fib_levels[0.382]
+        fib_500 = fib_levels[0.500]
+        fib_618 = fib_levels[0.618]
+        fib_650 = fib_levels[0.650]
+        fib_786 = fib_levels[0.786]
+        golden_low, golden_high = sorted((fib_618, fib_650))
+        fib_named = {
+            "23.6%": fib_236,
+            "38.2%": fib_382,
+            "50.0%": fib_500,
+            "61.8%": fib_618,
+            "65.0%": fib_650,
+            "78.6%": fib_786,
+        }
+        nearest_fib_name, nearest_fib_price = min(
+            fib_named.items(), key=lambda item: abs(curr_px - item[1])
+        )
+        nearest_fib_dist_atr = abs(curr_px - nearest_fib_price) / max(atr, 1e-9)
+        raw_pivots.extend(
+            [
+                swing_hi, swing_lo, fib_236, fib_382, fib_500,
+                fib_618, fib_650, fib_786, fib_ext_1272, fib_ext_1618,
+            ]
+        )
 
         # 3. Volume Profile POC
         bins = np.linspace(float(np.min(l[-100:])), float(np.max(h[-100:])), 25)
@@ -275,6 +313,42 @@ class SupportResistanceAgent(BaseAgent):
 
         score = 0.0
         bullets: List[str] = []
+
+        # Fibonacci confluence is directional and only scores when the confirmed 4H
+        # trend and the latest confirmed candle reaction agree. A bare touch is not a signal.
+        htf_close_s = df_htf["close"]
+        htf_ema21 = float(htf_close_s.ewm(span=21, adjust=False).mean().iloc[-1])
+        htf_ema50 = float(htf_close_s.ewm(span=50, adjust=False).mean().iloc[-1])
+        htf_px = float(htf_close_s.iloc[-1])
+        fib_htf_bull = htf_px > htf_ema21 and htf_ema21 >= htf_ema50 * 0.998
+        fib_htf_bear = htf_px < htf_ema21 and htf_ema21 <= htf_ema50 * 1.002
+        bullish_reaction = c[-1] > float(df["open"].iloc[-1]) and c[-1] > c[-2]
+        bearish_reaction = c[-1] < float(df["open"].iloc[-1]) and c[-1] < c[-2]
+        in_golden_pocket = golden_low - 0.12 * atr <= curr_px <= golden_high + 0.12 * atr
+        fib_confluence = "NONE"
+
+        if nearest_fib_dist_atr <= 0.30:
+            if fib_impulse == "BULLISH" and fib_htf_bull and bullish_reaction:
+                fib_points = 22.0 if in_golden_pocket else 16.0
+                score += fib_points
+                fib_confluence = "BULLISH_CONFIRMED"
+                bullets.append(
+                    f"همگرایی صعودی فیبوناچی: واکنش تاییدشده به سطح {nearest_fib_name} در ${self.fmt_px(nearest_fib_price)} هم‌جهت با روند ۴ساعته"
+                    + (" (ناحیه طلایی 61.8–65%)." if in_golden_pocket else ".")
+                )
+            elif fib_impulse == "BEARISH" and fib_htf_bear and bearish_reaction:
+                fib_points = 22.0 if in_golden_pocket else 16.0
+                score -= fib_points
+                fib_confluence = "BEARISH_CONFIRMED"
+                bullets.append(
+                    f"همگرایی نزولی فیبوناچی: ریجکشن تاییدشده از سطح {nearest_fib_name} در ${self.fmt_px(nearest_fib_price)} هم‌جهت با روند ۴ساعته"
+                    + (" (ناحیه طلایی 61.8–65%)." if in_golden_pocket else ".")
+                )
+            else:
+                fib_confluence = "TOUCH_UNCONFIRMED"
+                bullets.append(
+                    f"قیمت نزدیک سطح فیبوناچی {nearest_fib_name} (${self.fmt_px(nearest_fib_price)}) است، اما واکنش هم‌جهت ۴ساعته هنوز تایید نشده؛ بدون امتیاز ورود."
+                )
 
         # S/R Zone reaction scoring
         if curr_px <= s1_z["high"] + 0.3 * atr and c[-1] >= float(df["open"].iloc[-1]):
@@ -367,8 +441,27 @@ class SupportResistanceAgent(BaseAgent):
                 "ascending_tl": asc_tl,
                 "descending_tl": desc_tl,
                 "poc_price": round(poc_price, 6),
-                "fib_618": round(fib_618, 6),
+                "fib_236": round(fib_236, 6),
                 "fib_382": round(fib_382, 6),
+                "fib_500": round(fib_500, 6),
+                "fib_618": round(fib_618, 6),
+                "fib_650": round(fib_650, 6),
+                "fib_786": round(fib_786, 6),
+                "fibonacci": {
+                    "impulse_direction": fib_impulse,
+                    "swing_low": round(swing_lo, 6),
+                    "swing_high": round(swing_hi, 6),
+                    "levels": {name: round(px, 6) for name, px in fib_named.items()},
+                    "golden_pocket_low": round(golden_low, 6),
+                    "golden_pocket_high": round(golden_high, 6),
+                    "extension_1.272": round(fib_ext_1272, 6),
+                    "extension_1.618": round(fib_ext_1618, 6),
+                    "nearest_level": nearest_fib_name,
+                    "nearest_price": round(nearest_fib_price, 6),
+                    "distance_atr": round(nearest_fib_dist_atr, 3),
+                    "in_golden_pocket": in_golden_pocket,
+                    "confluence": fib_confluence,
+                },
                 "room_up_atr": round(room_up_atr, 2),
                 "room_dn_atr": round(room_dn_atr, 2),
                 "dist_to_s1_pct": round(dist_to_s1_pct, 2),
