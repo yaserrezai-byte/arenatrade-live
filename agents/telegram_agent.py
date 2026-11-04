@@ -78,7 +78,7 @@ class TelegramNotifierAgent:
             "━━━━━━━━━━━━━━━━━━━━",
             "📡 <b>بخش:</b> <code>کپی مستقیم از تریدر موفق (مستقل از تحلیل تکنیکال)</code>",
             f"👤 <b>تریدر مرجع فعال:</b> <code>{whale_name}</code> (<code>{short_addr}</code>)",
-            f"🏆 <b>کارنامه نهنگ:</b> موجودی <code>${whale_eq:,.0f}</code> | بازدهی ماهانه <code>+{whale_roi:.1f}%</code> | وین‌ریت <code>{whale_wr:.1f}%</code>",
+            f"🏆 <b>کارنامه تاریخی نهنگ (تضمین آینده نیست):</b> موجودی <code>${whale_eq:,.0f}</code> | بازدهی ماه اخیر <code>{whale_roi:+.1f}%</code> | وین‌ریت نمونه معاملات اخیر <code>{whale_wr:.1f}%</code>",
             f"🛡 <b>وضعیت خطای متوالی تریدر:</b> <code>{consec} / {max_l}</code> (تعویض خودکار در صورت {max_l} خطای پیاپی)",
             "",
             "🐋 <b>جزئیات پوزیشن بازِ تریدر مرجع:</b>",
@@ -95,7 +95,7 @@ class TelegramNotifierAgent:
                 "💰 <b>سطوح پیشنهادی اجرای کپی برای شما:</b>",
                 f"🔹 <b>قیمت لحظه‌ای بازار:</b> <code>${_fmt_price(sig['current_price'])}</code>",
                 f"📥 <b>محدوده مناسب ورود:</b> <code>${_fmt_price(sig['entry_low'])}</code> — <code>${_fmt_price(sig['entry_high'])}</code>",
-                f"⚡️ <b>اهرم ایمن پیشنهادی:</b> <code>{sig['recommended_leverage']}x ({sig.get('margin_mode', 'ISOLATED')})</code>",
+                f"⚡️ <b>سقف اهرم الگوریتمی اولیه (نه تضمین ایمنی):</b> <code>{sig['recommended_leverage']}x ({sig.get('margin_mode', 'ISOLATED')})</code>",
                 f"🎯 <b>تارگت اول (TP1):</b> <code>${_fmt_price(sig['tp1'])}</code>",
                 f"🎯 <b>تارگت دوم (TP2):</b> <code>${_fmt_price(sig['tp2'])}</code>",
                 f"🎯 <b>تارگت سوم (TP3):</b> <code>${_fmt_price(sig['tp3'])}</code>",
@@ -124,7 +124,7 @@ class TelegramNotifierAgent:
             "📡 <b>بخش:</b> <code>تحلیل خالص ۸ ایجنت تخصصی بازار (مستقل از کپی‌تریدر)</code>",
             f"📌 <b>جهت پوزیشن:</b> <code>{dir_fa}</code>",
             f"⏱ <b>تایم‌فریم مرجع:</b> <code>{sig['timeframe']}</code> (اسکن ۱۵ دقیقه‌ای)",
-            f"🎯 <b>امتیاز اطمینان:</b> <code>{sig['confidence']:.1f}%</code> (برآیند: <code>{sig['composite_score']:+.1f}</code>)",
+            f"🎯 <b>امتیاز اطمینان الگوریتمی (هنوز کالیبره‌نشده به احتمال برد):</b> <code>{sig['confidence']:.1f}/100</code> (برآیند: <code>{sig['composite_score']:+.1f}</code>)",
         ]
 
         lines.extend(
@@ -133,7 +133,7 @@ class TelegramNotifierAgent:
                 "💰 <b>سطوح معاملاتی و مدیریت سفارش:</b>",
                 f"🔹 <b>قیمت فعلی بازار:</b> <code>${_fmt_price(sig['current_price'])}</code>",
                 f"📥 <b>محدوده ورود (Entry):</b> <code>${_fmt_price(sig['entry_low'])}</code> — <code>${_fmt_price(sig['entry_high'])}</code>",
-                f"⚡️ <b>اهرم پیشنهادی:</b> <code>{sig['recommended_leverage']}x ({sig.get('margin_mode', 'ISOLATED')})</code>",
+                f"⚡️ <b>سقف اهرم الگوریتمی اولیه (پیش از صحت‌سنجی):</b> <code>{sig['recommended_leverage']}x ({sig.get('margin_mode', 'ISOLATED')})</code>",
                 f"🎯 <b>تارگت اول (TP1 - سیو سود):</b> <code>${_fmt_price(sig['tp1'])}</code>",
                 f"🎯 <b>تارگت دوم (TP2 - اصلی):</b> <code>${_fmt_price(sig['tp2'])}</code>",
                 f"🎯 <b>تارگت سوم (TP3 - موج‌سواری):</b> <code>${_fmt_price(sig['tp3'])}</code>",
@@ -159,8 +159,8 @@ class TelegramNotifierAgent:
             lines.extend(
                 [
                     "",
-                    "💵 <b>جریان ورود و خروج پول (Money Flow):</b>",
-                    f"• <b>خالص جریان ۱ ساعته:</b> <code>{f1h:+,.2f}M$</code> ({f_icon}) | <b>۱۵ دقیقه اخیر:</b> <code>{f15m:+,.2f}M$</code>",
+                    "💵 <b>برآورد فشار خرید/فروش از OHLCV (Money Flow Proxy):</b>",
+                    f"• <b>خالص برآوردی ۱ ساعته:</b> <code>{f1h:+,.2f}M$</code> ({f_icon}) | <b>آخرین کندل بسته ۱۵ دقیقه‌ای:</b> <code>{f15m:+,.2f}M$</code>",
                     f"• <b>شاخص MFI-14:</b> <code>{mf_m.get('mfi_14', 50)}</code> | <b>روند OBV:</b> <code>{'صعودی' if mf_m.get('obv_trend')=='BULLISH' else 'نزولی'}</code>",
                     f"• <b>Open Interest کل:</b> <code>${oi_m:,.1f}M</code> | <b>فاندینگ ریت:</b> <code>{mf_m.get('funding_8h_pct', 0):+.4f}%</code>",
                 ]
