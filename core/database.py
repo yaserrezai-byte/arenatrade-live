@@ -101,6 +101,16 @@ class Database:
                     entry_price REAL NOT NULL,
                     created_at INTEGER NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS watchdog_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at INTEGER NOT NULL,
+                    timestamp_iso TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    auto_healed INTEGER NOT NULL DEFAULT 0,
+                    summary_fa TEXT NOT NULL
+                );
                 """
             )
             conn.commit()
@@ -491,6 +501,105 @@ class Database:
                 (limit,),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def log_watchdog_event(
+        self,
+        timestamp_iso: str,
+        event_type: str,
+        severity: str,
+        auto_healed: bool,
+        summary_fa: str,
+    ) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO watchdog_logs (
+                    created_at, timestamp_iso, event_type, severity, auto_healed, summary_fa
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(time.time()),
+                    timestamp_iso,
+                    event_type,
+                    severity,
+                    1 if auto_healed else 0,
+                    summary_fa,
+                ),
+            )
+            conn.commit()
+
+    def list_watchdog_logs(self, limit: int = 15) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM watchdog_logs ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_watchdog_audit_stats(self) -> Dict[str, Any]:
+        now = int(time.time())
+        with self._lock, self._connect() as conn:
+            last_ma_row = conn.execute(
+                "SELECT MAX(created_at) AS ts, COUNT(*) AS total FROM signals WHERE signal_source = 'MARKET_ANALYSIS'"
+            ).fetchone()
+            last_copy_row = conn.execute(
+                "SELECT MAX(updated_at) AS ts FROM copy_traders"
+            ).fetchone()
+            batches_1h = conn.execute(
+                """
+                SELECT COUNT(DISTINCT substr(timestamp_iso, 1, 16)) AS c
+                FROM signals
+                WHERE signal_source = 'MARKET_ANALYSIS' AND created_at >= ?
+                """,
+                (now - 3900,),
+            ).fetchone()
+            batches_6h = conn.execute(
+                """
+                SELECT COUNT(DISTINCT substr(timestamp_iso, 1, 16)) AS c
+                FROM signals
+                WHERE signal_source = 'MARKET_ANALYSIS' AND created_at >= ?
+                """,
+                (now - 21600,),
+            ).fetchone()
+            tg_stats = conn.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN delivered = 1 THEN 1 ELSE 0 END) AS ok_cnt,
+                    SUM(CASE WHEN delivered = 0 THEN 1 ELSE 0 END) AS fail_cnt,
+                    MAX(CASE WHEN delivered = 1 THEN created_at ELSE NULL END) AS last_ok_ts
+                FROM telegram_logs
+                WHERE created_at >= ?
+                """,
+                (now - 21600,),
+            ).fetchone()
+            heal_cnt = conn.execute(
+                "SELECT COUNT(*) AS c FROM watchdog_logs WHERE auto_healed = 1 AND created_at >= ?",
+                (now - 86400,),
+            ).fetchone()
+
+            # Check any actionable COPY_TRADER signal in last 30m with telegram_sent = 0
+            unsent_copy = conn.execute(
+                """
+                SELECT payload_json FROM signals
+                WHERE signal_source = 'COPY_TRADER' AND actionable = 1 AND telegram_sent = 0 AND created_at >= ?
+                ORDER BY created_at DESC LIMIT 5
+                """,
+                (now - 1800,),
+            ).fetchall()
+
+            return {
+                "now_ts": now,
+                "last_market_scan_ts": int(last_ma_row["ts"] or 0),
+                "total_market_signals": int(last_ma_row["total"] or 0),
+                "last_copy_check_ts": int(last_copy_row["ts"] or 0),
+                "scan_batches_last_1h": int(batches_1h["c"] or 0),
+                "scan_batches_last_6h": int(batches_6h["c"] or 0),
+                "tg_delivered_6h": int(tg_stats["ok_cnt"] or 0),
+                "tg_failed_6h": int(tg_stats["fail_cnt"] or 0),
+                "last_tg_delivered_ts": int(tg_stats["last_ok_ts"] or 0),
+                "auto_heals_24h": int(heal_cnt["c"] or 0),
+                "unsent_copy_signals": [json.loads(r["payload_json"]) for r in unsent_copy],
+            }
 
 
 db = Database()
