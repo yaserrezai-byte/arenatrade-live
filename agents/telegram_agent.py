@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+import asyncio
+import re
 from typing import Any, Dict, Optional
 import httpx
 
@@ -299,28 +301,41 @@ class TelegramNotifierAgent:
         last_msg_id = None
         notes = []
 
-        async with httpx.AsyncClient(timeout=12.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             for cid in chat_ids:
-                payload: Dict[str, Any] = {
-                    "chat_id": cid,
-                    "text": html_text,
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": True,
-                }
-                if reply_markup:
-                    payload["reply_markup"] = reply_markup
-                try:
-                    resp = await client.post(url, json=payload)
-                    data = resp.json()
-                    if resp.status_code == 200 and data.get("ok"):
-                        delivered_any = True
-                        last_msg_id = data["result"]["message_id"]
-                        notes.append(f"ارسال موفق به {cid}")
-                    else:
-                        err_desc = data.get("description", f"HTTP {resp.status_code}")
-                        notes.append(f"خطا برای {cid}: {err_desc}")
-                except Exception as exc:
-                    notes.append(f"خطای ارتباط ({cid}): {exc}")
+                sent_this_chat = False
+                last_err = ""
+                for attempt in range(3):
+                    payload: Dict[str, Any] = {
+                        "chat_id": cid,
+                        "text": html_text if attempt < 2 else re.sub(r"<[^>]+>", "", html_text),
+                        "disable_web_page_preview": True,
+                    }
+                    if attempt < 2:
+                        payload["parse_mode"] = "HTML"
+                    if reply_markup:
+                        payload["reply_markup"] = reply_markup
+                    try:
+                        resp = await client.post(url, json=payload)
+                        data = resp.json()
+                        if resp.status_code == 200 and data.get("ok"):
+                            delivered_any = True
+                            sent_this_chat = True
+                            last_msg_id = data["result"]["message_id"]
+                            notes.append(f"ارسال موفق به {cid}")
+                            break
+                        elif resp.status_code == 429:
+                            retry_after = float(data.get("parameters", {}).get("retry_after", 2.0))
+                            await asyncio.sleep(min(retry_after + 0.5, 8.0))
+                            last_err = data.get("description", "HTTP 429")
+                        else:
+                            last_err = data.get("description", f"HTTP {resp.status_code}")
+                            await asyncio.sleep(1.2 * (attempt + 1))
+                    except Exception as exc:
+                        last_err = str(exc)
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                if not sent_this_chat:
+                    notes.append(f"خطا برای {cid}: {last_err}")
 
         note_str = " | ".join(notes)
         db.log_telegram(
