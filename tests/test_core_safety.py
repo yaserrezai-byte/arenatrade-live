@@ -94,6 +94,7 @@ class SummaryIntegrityTests(unittest.TestCase):
         sig.update({
             "previous_comparison": {
                 "has_previous": True, "price_change_pct": 1.25, "previous_score": 30.0,
+                "htf_4h_regime": "BULLISH", "safety_veto_reasons": [],
             },
             "agent_reports": [
                 {"agent_id": "money_flow", "metrics": {"net_inflow_1h_usd": 1_500_000}},
@@ -106,6 +107,7 @@ class SummaryIntegrityTests(unittest.TestCase):
         self.assertIn("57.4", text)
         self.assertIn("S1:<code>95", text)
         self.assertIn("Δقیمت:<code>+1.25%", text)
+        self.assertIn("روند 4H: <b>صعودی", text)
 
 
 class PendingDeliveryTests(unittest.TestCase):
