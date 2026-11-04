@@ -369,7 +369,7 @@ class TelegramBotListener:
             ic = "🟢" if s["direction"] == "LONG" else ("🔴" if s["direction"] == "SHORT" else "⚪️")
             act = "✅ تاییدشده" if s["actionable"] else "⏳ تحت نظر"
             lines.append(
-                f"{ic} <b>#{s['symbol']}</b>: <code>{s['direction']}</code> | اطمینان: <code>{s['confidence']}%</code> | R:R <code>1:{s['risk_reward_tp2']}</code> ({act})"
+                f"{ic} <b>#{s['symbol']}</b>: <code>{s['direction']}</code> | اطمینان الگوریتمی: <code>{s['confidence']}/100</code> | R:R <code>1:{s['risk_reward_tp2']}</code> ({act})"
             )
         await telegram_agent.send_html_message(
             "\n".join(lines), msg_type="SCAN_SUMMARY", override_chat_id=chat_id, reply_markup=MAIN_KEYBOARD
