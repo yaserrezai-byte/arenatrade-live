@@ -77,9 +77,9 @@ class WatchdogSupervisorAgent:
         if settings.get("AUTO_SCAN_ENABLED", True) and ma_age > max_scan_age:
             from services.scanner_service import scanner_service
 
-            if scanner_service.is_scanning_now and ma_age > max_scan_age + 120:
-                scanner_service.is_scanning_now = False
-
+            # Never mutate another coroutine's execution flag. Every symbol analysis has
+            # its own hard timeout; forcing the flag open could create overlapping scans
+            # and duplicate Telegram signals.
             if not scanner_service.is_scanning_now:
                 ts_iso = _now_iso()
                 msg_fa = (
