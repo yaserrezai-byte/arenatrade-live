@@ -296,6 +296,7 @@ class OrchestratorAgent:
                 "descending_tl": sr_m.get("descending_tl"),
                 "poc_price": sr_m.get("poc_price"),
                 "fib_618": sr_m.get("fib_618"),
+                "fibonacci": sr_m.get("fibonacci"),
             },
             previous_comparison={
                 **mem_report.metrics,
