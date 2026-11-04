@@ -136,7 +136,14 @@ class OrchestratorAgent:
             direction = "NEUTRAL"
 
         # 4. Compute Institutional Futures Entry, Stop-Loss, TP1/TP2/TP3, Leverage
-        curr_px = float(df_primary["close"].iloc[-1])
+        closed_candle_px = float(df_primary["close"].iloc[-1])
+        live_mark_px = float(derivatives.get("mark_price") or 0.0)
+        # Indicators use only confirmed candles, while entries/stops are anchored to the
+        # current executable mark price. Reject implausible/stale cross-source marks.
+        if live_mark_px > 0 and abs(live_mark_px - closed_candle_px) / closed_candle_px <= 0.12:
+            curr_px = live_mark_px
+        else:
+            curr_px = closed_candle_px
         atr = float(report_map["price_action"].metrics.get("atr", curr_px * 0.012))
         atr_pct = float(report_map["price_action"].metrics.get("atr_pct", 1.2))
         s1 = float(report_map["support_resistance"].metrics.get("s1", curr_px - 1.5 * atr))
@@ -176,10 +183,22 @@ class OrchestratorAgent:
         agreement_count = long_votes if direction == "LONG" else (short_votes if direction == "SHORT" else max(long_votes, short_votes))
         confidence = min(96.0, 42.0 + abs(composite_score) * 0.52 + agreement_count * 2.8)
 
-        # Safety Vetoes (Black swan news, or trading straight into brick-wall S/R)
+        # Safety Vetoes (Black swan news, trading into S/R, or chasing a live price
+        # that has moved too far from the last confirmed primary candle).
         veto_reasons = [r.veto_reason_fa for r in reports if r.veto and r.veto_reason_fa]
-        room_up_atr = float(report_map["support_resistance"].metrics.get("room_up_atr", 2.0))
-        room_dn_atr = float(report_map["support_resistance"].metrics.get("room_dn_atr", 2.0))
+        live_deviation_atr = abs(curr_px - closed_candle_px) / max(atr, 1e-9)
+        if live_mark_px > 0 and live_deviation_atr > 0.90:
+            veto_reasons.append(
+                f"قیمت زنده {live_deviation_atr:.2f} ATR از آخرین کندل تاییدشده فاصله گرفته؛ برای جلوگیری از تعقیب قیمت باید منتظر تثبیت/پولبک ماند."
+            )
+        room_up_atr = min(
+            float(report_map["support_resistance"].metrics.get("room_up_atr", 2.0)),
+            (r1 - curr_px) / max(atr, 1e-9),
+        )
+        room_dn_atr = min(
+            float(report_map["support_resistance"].metrics.get("room_dn_atr", 2.0)),
+            (curr_px - s1) / max(atr, 1e-9),
+        )
         if direction == "LONG" and room_up_atr < 0.35:
             confidence -= 14.0
         elif direction == "SHORT" and room_dn_atr < 0.35:
@@ -262,7 +281,13 @@ class OrchestratorAgent:
                 "poc_price": sr_m.get("poc_price"),
                 "fib_618": sr_m.get("fib_618"),
             },
-            previous_comparison=mem_report.metrics,
+            previous_comparison={
+                **mem_report.metrics,
+                "confirmed_primary_close": closed_candle_px,
+                "live_mark_price": curr_px,
+                "live_deviation_atr": round(live_deviation_atr, 3),
+                "data_policy": "CONFIRMED_CANDLES_PLUS_LIVE_MARK_WITH_CHASE_VETO",
+            },
             agent_reports=reports,
             telegram_sent=False,
         )
@@ -368,7 +393,7 @@ class OrchestratorAgent:
         status_sentence = (
             f"ستاپ معاملاتی با نسبت ریسک به ریوارد 1:{rr_tp2:.2f} تایید شده است."
             if actionable
-            else f"با توجه به امتیاز اطمینان {confidence:.0f}%، رعایت حجم کم یا انتظار برای پولبک به محدوده بهینه ورود توصیه می‌شود."
+            else f"با توجه به امتیاز اطمینان الگوریتمی {confidence:.0f}/100 (هنوز کالیبره‌نشده به احتمال برد)، عدم ورود یا انتظار برای پولبک به محدوده بهینه توصیه می‌شود."
         )
 
         text = (
