@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 SignalDirection = Literal["LONG", "SHORT", "NEUTRAL"]
@@ -10,9 +10,9 @@ class AgentReport(BaseModel):
     agent_name_fa: str
     category_fa: str
     symbol: str
-    score: float = Field(..., description="-100 (Strong Short) to +100 (Strong Long)")
+    score: float = Field(..., ge=-100.0, le=100.0, description="-100 (Strong Short) to +100 (Strong Long)")
     direction: SignalDirection
-    confidence: float = Field(..., description="0 to 100")
+    confidence: float = Field(..., ge=0.0, le=100.0, description="0 to 100")
     summary_fa: str
     bullets_fa: List[str] = Field(default_factory=list)
     metrics: Dict[str, Any] = Field(default_factory=dict)
@@ -28,20 +28,20 @@ class FuturesSignal(BaseModel):
     timeframe: str
     direction: SignalDirection
     actionable: bool
-    signal_source: str  # "MULTI_AGENT_CONFLUENCE" | "SMART_COPY_CONFIRMED" | "COPY_DIRECT"
-    confidence: float
-    composite_score: float
-    current_price: float
-    entry_low: float
-    entry_high: float
-    stop_loss: float
-    tp1: float
-    tp2: float
-    tp3: float
-    risk_reward_tp2: float
-    recommended_leverage: int
-    margin_mode: str = "ISOLATED"
-    risk_pct: float = 1.5
+    signal_source: Literal["MARKET_ANALYSIS", "COPY_TRADER"]
+    confidence: float = Field(..., ge=0.0, le=100.0)
+    composite_score: float = Field(..., ge=-100.0, le=100.0)
+    current_price: float = Field(..., gt=0.0)
+    entry_low: float = Field(..., gt=0.0)
+    entry_high: float = Field(..., gt=0.0)
+    stop_loss: float = Field(..., gt=0.0)
+    tp1: float = Field(..., gt=0.0)
+    tp2: float = Field(..., gt=0.0)
+    tp3: float = Field(..., gt=0.0)
+    risk_reward_tp2: float = Field(..., ge=0.0)
+    recommended_leverage: int = Field(..., ge=1, le=100)
+    margin_mode: Literal["ISOLATED"] = "ISOLATED"
+    risk_pct: float = Field(default=1.5, gt=0.0, le=10.0)
     executive_summary_fa: str
     invalidation_note_fa: str
     ai_engine_used: str
@@ -51,6 +51,18 @@ class FuturesSignal(BaseModel):
     previous_comparison: Dict[str, Any] = Field(default_factory=dict)
     agent_reports: List[AgentReport] = Field(default_factory=list)
     telegram_sent: bool = False
+
+    @model_validator(mode="after")
+    def validate_trade_geometry(self) -> "FuturesSignal":
+        if self.entry_low > self.entry_high:
+            raise ValueError("entry_low must be <= entry_high")
+        if self.direction == "LONG":
+            if not (self.stop_loss < self.current_price < self.tp1 < self.tp2 < self.tp3):
+                raise ValueError("invalid LONG stop/target geometry")
+        elif self.direction == "SHORT":
+            if not (self.stop_loss > self.current_price > self.tp1 > self.tp2 > self.tp3):
+                raise ValueError("invalid SHORT stop/target geometry")
+        return self
 
 
 class TraderPosition(BaseModel):
