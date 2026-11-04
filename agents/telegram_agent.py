@@ -33,6 +33,7 @@ DEFAULT_SIGNAL_INLINE_KEYBOARD = {
         ],
         [
             {"text": "📡 اسکن کل واچ‌لیست", "callback_data": "cmd:scan"},
+            {"text": "🛡 گزارش ایجنت ناظر", "callback_data": "cmd:watchdog"},
         ],
     ]
 }
