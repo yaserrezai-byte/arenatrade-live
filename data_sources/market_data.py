@@ -81,6 +81,30 @@ class MarketDataHub:
                 }
             return self._set_cached("hl_meta_ctxs", mapped)
 
+    @staticmethod
+    def _validate_ohlcv(df: pd.DataFrame, coin: str, interval: str) -> pd.DataFrame:
+        required = ["timestamp", "open", "high", "low", "close", "volume", "quote_volume"]
+        if df.empty or any(c not in df.columns for c in required):
+            raise ValueError(f"Invalid/empty OHLCV for {coin} {interval}")
+        clean = df.drop_duplicates(subset=["timestamp"], keep="last").sort_values("timestamp").reset_index(drop=True)
+        numeric = clean[required[1:]].apply(pd.to_numeric, errors="coerce")
+        clean[required[1:]] = numeric
+        valid = (
+            clean[required].notna().all(axis=1)
+            & (clean["open"] > 0)
+            & (clean["high"] > 0)
+            & (clean["low"] > 0)
+            & (clean["close"] > 0)
+            & (clean["high"] >= clean[["open", "close", "low"]].max(axis=1))
+            & (clean["low"] <= clean[["open", "close", "high"]].min(axis=1))
+            & (clean["volume"] >= 0)
+            & (clean["quote_volume"] >= 0)
+        )
+        clean = clean.loc[valid].reset_index(drop=True)
+        if len(clean) < 50:
+            raise ValueError(f"Insufficient valid OHLCV for {coin} {interval}: {len(clean)}")
+        return clean
+
     async def fetch_ohlcv(self, symbol: str, interval: str = "1h", limit: int = 210) -> pd.DataFrame:
         coin = symbol.upper().replace("USDT", "").strip()
         cache_key = f"ohlcv:{coin}:{interval}:{limit}"
@@ -120,6 +144,11 @@ class MarketDataHub:
                 raise ValueError(f"Empty OKX candles for {inst_id}")
             records = []
             for r in reversed(rows):
+                # OKX field 8 is `confirm`: "1" means the candle is fully closed.
+                # Never feed a still-forming candle into signal calculations; doing so
+                # causes intrabar repainting and invalid backtest/live comparisons.
+                if len(r) > 8 and str(r[8]) != "1":
+                    continue
                 records.append(
                     {
                         "timestamp": int(r[0]),
@@ -131,7 +160,7 @@ class MarketDataHub:
                         "quote_volume": float(r[7]),
                     }
                 )
-            return pd.DataFrame(records)
+            return self._validate_ohlcv(pd.DataFrame(records), coin, interval)
 
     async def _fetch_hl_candles(self, coin: str, interval: str, limit: int) -> pd.DataFrame:
         step_ms = self.INTERVAL_MS.get(interval, 3_600_000)
@@ -151,7 +180,10 @@ class MarketDataHub:
             resp.raise_for_status()
             rows = resp.json()
             records = []
+            now_ms = int(time.time() * 1000)
             for r in rows[-limit:]:
+                if int(r["t"]) + step_ms > now_ms:
+                    continue
                 c = float(r["c"])
                 v = float(r["v"])
                 records.append(
@@ -165,7 +197,7 @@ class MarketDataHub:
                         "quote_volume": v * c,
                     }
                 )
-            return pd.DataFrame(records)
+            return self._validate_ohlcv(pd.DataFrame(records), coin, interval)
 
     async def _fetch_binance_vision_candles(self, coin: str, interval: str, limit: int) -> pd.DataFrame:
         url = f"{self.BINANCE_VISION}/api/v3/klines?symbol={coin}USDT&interval={interval}&limit={min(limit, 500)}"
@@ -174,7 +206,11 @@ class MarketDataHub:
             resp.raise_for_status()
             rows = resp.json()
             records = []
+            now_ms = int(time.time() * 1000)
             for r in rows:
+                # Binance kline field 6 is close time. Exclude the open candle.
+                if int(r[6]) >= now_ms:
+                    continue
                 records.append(
                     {
                         "timestamp": int(r[0]),
@@ -186,7 +222,7 @@ class MarketDataHub:
                         "quote_volume": float(r[7]),
                     }
                 )
-            return pd.DataFrame(records)
+            return self._validate_ohlcv(pd.DataFrame(records), coin, interval)
 
     async def fetch_derivatives_bundle(self, symbol: str) -> Dict[str, Any]:
         """
