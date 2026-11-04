@@ -1,0 +1,46 @@
+name: Arenatrade 15m Auto-Scanner & Copy-Trader
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: arenatrade-15m-scanner
+  cancel-in-progress: false
+
+jobs:
+  scan-and-notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Restore SQLite memory (15m Historical Comparison & Copy-Trader 2-Strike State)
+        uses: actions/cache@v4
+        with:
+          path: data/futures_intelligence.db
+          key: arenatrade-db-${{ github.run_id }}
+          restore-keys: |
+            arenatrade-db-
+
+      - name: Install dependencies
+        run: |
+          mkdir -p data
+          pip install --no-cache-dir -r requirements.txt
+
+      - name: Run 15m Market Analysis + Smart Copy-Trader Pipelines
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_AUTO_SEND: "true"
+          SEND_SCAN_SUMMARY_REPORT: "true"
+          AUTO_SCAN_INTERVAL_SEC: "900"
+        run: python run_oneshot_scan.py

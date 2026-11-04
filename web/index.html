@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>سیستم چند-ایجنته سیگنال فیوچرز و کپی‌تریدر هوشمند</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-logo">⚡</div>
+        <div>
+          <h1>اتاق فرمان هوش مصنوعی فیوچرز و کپی‌تریدر</h1>
+          <p>معماری ۱۰ ایجنت تخصصی • دیتای زنده Hyperliquid + OKX + Bitget • ارسال به کانال تلگرام</p>
+        </div>
+      </div>
+
+      <div class="status-pills">
+        <span class="pill" id="aiStatusPill"><span class="dot"></span> موتور هوش مصنوعی: در حال بارگذاری...</span>
+        <span class="pill" id="copyStatusPill">🐋 تریدر فعال: ...</span>
+        <span class="pill" id="tgStatusPill"><span class="dot warn"></span> کانال تلگرام: پیش‌نمایش فعال</span>
+      </div>
+    </div>
+
+    <div class="ticker-strip" id="tickerStrip">
+      <!-- Live Watchlist Chips -->
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="nav-bar">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="terminal">🧠 تحلیل مستقل بازار (۸ ایجنت)</button>
+        <button class="tab-btn" data-tab="copytrader">🐋 کپی‌تریدر مستقل (قانون ۲ خطا)</button>
+        <button class="tab-btn" data-tab="telegram">✈️ کانال تلگرام و آرشیو سیگنال‌ها</button>
+        <button class="tab-btn" data-tab="settings">⚙️ تنظیمات تلگرام، ریسک و AI</button>
+      </div>
+
+      <div class="toolbar">
+        <input type="text" id="symbolInput" value="BTC" placeholder="نماد ارز (مثلاً BTC, SOL, HYPE)" style="width: 130px; text-transform: uppercase;" />
+        <select id="timeframeSelect">
+          <option value="15m">تایم‌فریم 15m</option>
+          <option value="1h" selected>تایم‌فریم 1h</option>
+          <option value="4h">تایم‌فریم 4h</option>
+          <option value="1d">تایم‌فریم 1d</option>
+        </select>
+        <button class="btn btn-primary" id="analyzeBtn">🔍 تحلیل عمیق ۸ ایجنت</button>
+        <button class="btn" id="scanAllBtn">📡 اسکن کل واچ‌لیست</button>
+      </div>
+    </div>
+
+    <!-- TAB 1: MULTI-AGENT TERMINAL -->
+    <section class="tab-panel active" id="tab-terminal">
+      <div class="hero-grid">
+        <!-- Signal Action Card -->
+        <div class="card" id="signalHeroCard">
+          <div class="signal-header">
+            <div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary);" id="sigPairMeta">BTCUSDT.P • تایم‌فریم 1h</div>
+              <h2 style="font-size: 1.45rem; margin-top: 2px;" id="sigPriceTitle" class="ltr-num">$--</h2>
+            </div>
+            <div style="text-align: left;">
+              <div class="dir-badge dir-NEUTRAL" id="sigDirBadge">در حال تحلیل...</div>
+              <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 5px;" id="sigConfText">اطمینان: --%</div>
+            </div>
+          </div>
+
+          <div class="levels-grid">
+            <div class="level-box">
+              <span class="lbl">📥 محدوده ورود (Entry)</span>
+              <span class="val ltr-num" id="lvlEntry">--</span>
+            </div>
+            <div class="level-box">
+              <span class="lbl">🛑 حد ضرر الزامی (SL)</span>
+              <span class="val down ltr-num" id="lvlSL">--</span>
+            </div>
+            <div class="level-box">
+              <span class="lbl">⚡️ اهرم و ریسک به ریوارد</span>
+              <span class="val ltr-num" id="lvlLevRR">--</span>
+            </div>
+            <div class="level-box">
+              <span class="lbl">🎯 تارگت اول (TP1)</span>
+              <span class="val up ltr-num" id="lvlTP1">--</span>
+            </div>
+            <div class="level-box">
+              <span class="lbl">🎯 تارگت دوم (TP2)</span>
+              <span class="val up ltr-num" id="lvlTP2">--</span>
+            </div>
+            <div class="level-box">
+              <span class="lbl">🎯 تارگت سوم (TP3)</span>
+              <span class="val up ltr-num" id="lvlTP3">--</span>
+            </div>
+          </div>
+
+          <div class="exec-box" id="sigExecSummary">در حال جمع‌آوری داده زنده از صرافی‌ها و اجرای همزمان ۸ ایجنت تخصصی...</div>
+          <div class="inval-box" id="sigInvalidation"></div>
+
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.76rem; color: var(--text-muted);" id="sigSourceBadge">منبع: همگرایی ایجنت‌ها</span>
+            <button class="btn btn-success" id="sendCurrentSigBtn">✈️ ارسال این سیگنال به کانال تلگرام</button>
+          </div>
+        </div>
+
+        <!-- Candlestick + Levels Interactive Canvas -->
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <strong style="font-size: 0.92rem;">نمودار کندلی زنده + سطوح ورود، حد ضرر، تارگت و حمایت/مقاومت</strong>
+            <span style="font-size: 0.76rem; color: var(--text-secondary);" id="derivQuickStats">OI: -- | Funding: --</span>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="priceChart"></canvas>
+          </div>
+          <div class="chart-legend">
+            <span><b style="color:#38bdf8;">━━</b> محدوده ورود</span>
+            <span><b style="color:#f43f5e;">┅┅</b> حد ضرر (SL)</span>
+            <span><b style="color:#10b981;">■</b> محدوده حمایت (S1 Zone)</span>
+            <span><b style="color:#a855f7;">■</b> محدوده مقاومت (R1 Zone)</span>
+            <span><b style="color:#f59e0b;">╱╲</b> خطوط روند صعودی/نزولی</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Historical Comparison + S/R Zones & Trendlines Dedicated Panel -->
+      <div class="card" style="margin-bottom: 18px;" id="comparisonAndTrendlineCard">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+          <strong style="font-size:0.95rem;">🔄 مقایسه هوشمند با تحلیل قبلی + وضعیت محدوده‌های حمایت/مقاومت و خطوط روند</strong>
+          <span style="font-size:0.76rem; color:var(--accent);" id="compPrevTimeBadge">در حال بررسی حافظه ساختاری...</span>
+        </div>
+        <div class="levels-grid" style="grid-template-columns: repeat(4, 1fr);" id="srTrendlineBoxes"></div>
+        <div class="exec-box" style="margin-top:10px; border-right-color:#a855f7; background:rgba(168,85,247,0.08);" id="compSummaryBox">
+          در حال مقایسه وضعیت فعلی بازار با تحلیل قبلی ذخیره‌شده در دیتابیس...
+        </div>
+      </div>
+
+      <!-- 8 Pure Analytical Agents Breakdown -->
+      <div class="section-title">
+        <span>🧩 گزارش تفکیکی ۸ ایجنت تخصصی تحلیل بازار (کاملاً مستقل از کپی‌تریدر)</span>
+        <span style="font-size: 0.78rem; color: var(--text-secondary);">امتیاز هر ایجنت از ۱۰۰- (شورت قوی) تا ۱۰۰+ (لانگ قوی)</span>
+      </div>
+      <div class="agents-grid" id="agentsGrid">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- News & Macro Fundamentals Strip -->
+      <div class="hero-grid" style="margin-top: 18px;">
+        <div class="card">
+          <h3 style="font-size: 0.94rem; margin-bottom: 10px;">📰 آخرین تیترهای خبری موثر بازار (فید زنده RSS)</h3>
+          <div id="liveNewsList" style="font-size: 0.81rem; color: var(--text-secondary);">در حال بارگذاری اخبار...</div>
+        </div>
+        <div class="card">
+          <h3 style="font-size: 0.94rem; margin-bottom: 10px;">📊 دیتای مشتقات فیوچرز، اردربوک و شاخص کلان</h3>
+          <div id="derivDetailGrid" class="levels-grid" style="margin-top: 6px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: SMART COPY TRADER (2-STRIKE RULE) -->
+    <section class="tab-panel" id="tab-copytrader">
+      <div class="copy-hero">
+        <div class="card" id="activeTraderCard">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <span class="pill" style="background: rgba(16,185,129,0.16); color:#34d399; border-color:#10b981;">تریدر مرجع در حال کپی (ACTIVE)</span>
+              <h2 style="margin-top: 8px; font-size: 1.28rem;" id="ctActiveName">--</h2>
+              <p style="font-size: 0.78rem; color: var(--text-secondary);" class="ltr-num" id="ctActiveAddr">--</p>
+            </div>
+            <div style="text-align: left;">
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">موجودی حساب فیوچرز</div>
+              <div style="font-size: 1.2rem; font-weight: 800; color: var(--accent);" class="ltr-num" id="ctActiveEq">$--</div>
+            </div>
+          </div>
+
+          <div class="levels-grid" style="margin-top: 14px;">
+            <div class="level-box">
+              <span class="lbl">بازدهی ۳۰ روزه (ROI)</span>
+              <span class="val up ltr-num" id="ctActiveRoi">--</span>
+            </div>
+            <div class="level-box">
+              <span class="lbl">سود ماهانه دلاری</span>
+              <span class="val up ltr-num" id="ctActivePnl">--</span>
+            </div>
+            <div class="level-box">
+              <span class="lbl">نرخ برد واقعی (Win Rate)</span>
+              <span class="val ltr-num" id="ctActiveWinRate">--</span>
+            </div>
+          </div>
+
+          <div style="margin-top: 14px;">
+            <div style="font-size: 0.83rem; font-weight: 700;">🛡 وضعیت قانون «تعویض خودکار پس از ۲ اشتباه متوالی»:</div>
+            <div class="strike-boxes" id="strikeBoxes">
+              <div class="strike-slot">خطای اول: ثبت نشده ✓</div>
+              <div class="strike-slot">خطای دوم (مرز تعویض خودکار): ثبت نشده ✓</div>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin: 14px 0 8px;">
+            <h4 style="font-size: 0.88rem;">📌 پوزیشن‌های فیوچرز بازِ این تریدر (منبع سیگنال مستقل کپی):</h4>
+            <button class="btn btn-primary" id="emitAllCopySigBtn" style="padding:5px 12px; font-size:0.78rem;">🐋 ارسال سیگنال مستقل کپی به تلگرام</button>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>ارز</th>
+                  <th>جهت</th>
+                  <th>حجم پوزیشن</th>
+                  <th>قیمت ورود نهنگ</th>
+                  <th>اهرم</th>
+                  <th>سود/ضرر باز</th>
+                  <th>ارسال سیگنال کپی</th>
+                </tr>
+              </thead>
+              <tbody id="activePositionsBody">
+                <tr><td colspan="7">در حال دریافت پوزیشن‌های زنده...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 2-Strike Control & Audit Log -->
+        <div class="card">
+          <h3 style="font-size: 0.96rem; margin-bottom: 8px;">⚡ پنل کنترل و تست مکانیزم ۲ خطای متوالی</h3>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 14px;">
+            ایجنت کپی‌تریدر به صورت خودکار معاملات بسته‌شده تریدر فعال را در لیدربورد Hyperliquid رصد می‌کند. اگر ۲ معامله پیاپی با ضرر بسته شود، تریدر فعلی حذف (`ROTATED_OUT`) شده و نفر بعدی از لیست ذخیره جایگزین می‌شود. می‌توانید عملکرد این ماشین وضعیت را همین الان تست کنید:
+          </p>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
+            <button class="btn btn-danger" id="simLossBtn">❌ ثبت ۱ اشتباه متوالی (تست استاپ)</button>
+            <button class="btn btn-success" id="simWinBtn">✅ ثبت ۱ معامله موفق (ریست به 0/2)</button>
+            <button class="btn" id="refreshLeaderboardBtn">🔄 بروزرسانی زنده لیدربورد</button>
+          </div>
+
+          <h4 style="font-size: 0.88rem; margin-bottom: 8px;">📜 تاریخچه تعویض خودکار تریدرها (Rotation Log)</h4>
+          <div id="rotationLogsBox" style="max-height: 290px; overflow-y: auto; font-size: 0.8rem; color: var(--text-secondary);">
+            هنوز تعویض تریدری رخ نداده است.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title" style="margin-top: 0;">
+          <span>🏆 لیست تریدرهای موفق شناسایی‌شده (صف جایگزینی هوشمند از ۴۸,۰۰۰ تریدر Hyperliquid)</span>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>رتبه</th>
+                <th>نام / شناسه نهنگ</th>
+                <th>وضعیت</th>
+                <th>سرمایه حساب</th>
+                <th>سود ۳۰ روزه</th>
+                <th>ROI ماهانه</th>
+                <th>وین‌ریت</th>
+                <th>خطای متوالی</th>
+                <th>پوزیشن‌های باز</th>
+                <th>عملیات</th>
+              </tr>
+            </thead>
+            <tbody id="rosterTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: TELEGRAM CHANNEL & SIGNALS ARCHIVE -->
+    <section class="tab-panel" id="tab-telegram">
+      <div class="tg-grid">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 0.96rem;">✈️ پیش‌نمایش و لاگ پیام‌های ارسالی به کانال تلگرام</h3>
+            <button class="btn" id="testTgQuickBtn">ارسال پیام تست</button>
+          </div>
+          <div class="tg-feed" id="tgFeedBox">
+            در حال بارگذاری پیام‌های تلگرام...
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap:wrap; gap:8px; margin-bottom: 12px;">
+            <h3 style="font-size: 0.96rem;">🗂 آرشیو سیگنال‌ها (تفکیک تحلیل بازار و کپی‌تریدر)</h3>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <select id="signalSourceFilter" style="padding:5px 10px; font-size:0.78rem;">
+                <option value="">همه منابع (تحلیل + کپی)</option>
+                <option value="MARKET_ANALYSIS">🧠 فقط تحلیل بازار</option>
+                <option value="COPY_TRADER">🐋 فقط کپی‌تریدر</option>
+              </select>
+              <label style="font-size: 0.8rem; color: var(--text-secondary); display:flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="actionableOnlyChk" /> فقط تاییدشده
+              </label>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>زمان</th>
+                  <th>منبع</th>
+                  <th>ارز</th>
+                  <th>جهت</th>
+                  <th>اطمینان</th>
+                  <th>ورود</th>
+                  <th>حد ضرر</th>
+                  <th>TP2</th>
+                  <th>تلگرام</th>
+                </tr>
+              </thead>
+              <tbody id="signalsHistoryBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: SETTINGS -->
+    <section class="tab-panel" id="tab-settings">
+      <form id="settingsForm" class="settings-grid">
+        <div class="card">
+          <h3 style="font-size: 0.98rem; margin-bottom: 14px;">✈️ ۱. تنظیمات ربات و کانال تلگرام</h3>
+          <div class="form-row">
+            <label>توکن ربات تلگرام (TELEGRAM_BOT_TOKEN از @BotFather)</label>
+            <input type="password" id="cfg_TELEGRAM_BOT_TOKEN" placeholder="7123456789:AAH..." class="ltr-num" />
+          </div>
+          <div class="form-row">
+            <label>آیدی کانال یا گروه تلگرام (TELEGRAM_CHAT_ID — مثال: @my_channel یا -1001234567890)</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="cfg_TELEGRAM_CHAT_ID" placeholder="@my_futures_signals یا -100..." class="ltr-num" />
+              <button type="button" class="btn" id="detectChatIdBtn" style="white-space:nowrap;">🔍 تشخیص خودکار آیدی</button>
+            </div>
+            <div id="detectedChatsList" style="margin-top:6px; font-size:0.77rem; color:var(--accent);"></div>
+          </div>
+          <div class="form-row">
+            <label>ارسال خودکار سیگنال‌های تاییدشده و هشدار تعویض تریدر به کانال</label>
+            <select id="cfg_TELEGRAM_AUTO_SEND">
+              <option value="true">فعال (ارسال خودکار)</option>
+              <option value="false">غیرفعال (فقط ارسال دستی)</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-success" id="saveAndTestTgBtn">💾 ذخیره و ارسال پیام تست به کانال تلگرام</button>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size: 0.98rem; margin-bottom: 14px;">⚖️ ۲. تایم‌فریم، واچ‌لیست و مدیریت ریسک فیوچرز</h3>
+          <div class="form-row">
+            <label>لیست ارزهای مورد پایش (WATCHLIST با کاما)</label>
+            <input type="text" id="cfg_WATCHLIST" class="ltr-num" />
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+            <div class="form-row">
+              <label>تایم‌فریم اصلی</label>
+              <select id="cfg_PRIMARY_TIMEFRAME">
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>تایم‌فریم روند (HTF)</label>
+              <select id="cfg_HTF_TIMEFRAME">
+                <option value="1h">1h</option>
+                <option value="4h">4h</option>
+                <option value="1d">1d</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>تایم‌فریم ورود (LTF)</label>
+              <select id="cfg_LTF_TIMEFRAME">
+                <option value="5m">5m</option>
+                <option value="15m">15m</option>
+                <option value="1h">1h</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+            <div class="form-row">
+              <label>حداکثر اهرم (Max Leverage)</label>
+              <input type="number" id="cfg_MAX_LEVERAGE" min="1" max="50" class="ltr-num" />
+            </div>
+            <div class="form-row">
+              <label>حداقل اطمینان سیگنال (%)</label>
+              <input type="number" id="cfg_MIN_CONFIDENCE_SCORE" min="40" max="95" class="ltr-num" />
+            </div>
+            <div class="form-row">
+              <label>حداقل ریسک به ریوارد (R:R)</label>
+              <input type="number" step="0.1" id="cfg_MIN_RISK_REWARD_RATIO" class="ltr-num" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size: 0.98rem; margin-bottom: 14px;">🐋 ۳. تنظیمات ایجنت کپی‌تریدر و اسکنر خودکار</h3>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-row">
+              <label>تعداد خطای متوالی برای تعویض تریدر</label>
+              <input type="number" id="cfg_COPY_TRADER_MAX_CONSECUTIVE_LOSSES" min="1" max="5" class="ltr-num" />
+            </div>
+            <div class="form-row">
+              <label>حداقل سرمایه نهنگ مرجع ($ USD)</label>
+              <input type="number" id="cfg_COPY_TRADER_MIN_EQUITY_USD" class="ltr-num" />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-row">
+              <label>اسکن خودکار پس‌زمینه</label>
+              <select id="cfg_AUTO_SCAN_ENABLED">
+                <option value="true">فعال</option>
+                <option value="false">غیرفعال</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>فاصله اسکن واچ‌لیست (ثانیه)</label>
+              <input type="number" id="cfg_AUTO_SCAN_INTERVAL_SEC" min="60" class="ltr-num" />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="font-size: 0.98rem; margin-bottom: 14px;">🧠 ۴. کلیدهای اختیاری هوش مصنوعی (موتور هیبرید بهینه)</h3>
+          <p style="font-size: 0.77rem; color: var(--text-secondary); margin-bottom: 10px;">
+            سیستم به صورت پیش‌فرض با موتور کوانت چند-ایجنته بدون نیاز به کلید پولی کار می‌کند. در صورت افزودن هر یک از کلیدهای زیر، تحلیل عمیق زبانی اخبار و جمع‌بندی سرتیم به طور خودکار ارتقا می‌یابد:
+          </p>
+          <div class="form-row">
+            <label>اولویت انتخاب مدل (AI_PROVIDER)</label>
+            <select id="cfg_AI_PROVIDER">
+              <option value="auto">خودکار (بهترین و بهینه‌ترین مدل فعال)</option>
+              <option value="gemini">Google Gemini (پیشنهادی - سریع و بهینه)</option>
+              <option value="openrouter">OpenRouter (DeepSeek / Claude / GPT)</option>
+              <option value="deepseek">DeepSeek API</option>
+              <option value="openai">OpenAI API</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>GEMINI_API_KEY</label>
+            <input type="password" id="cfg_GEMINI_API_KEY" placeholder="AIzaSy..." class="ltr-num" />
+          </div>
+          <div class="form-row">
+            <label>OPENROUTER_API_KEY</label>
+            <input type="password" id="cfg_OPENROUTER_API_KEY" placeholder="sk-or-v1-..." class="ltr-num" />
+          </div>
+          <div class="form-row">
+            <label>OPENAI_API_KEY</label>
+            <input type="password" id="cfg_OPENAI_API_KEY" placeholder="sk-..." class="ltr-num" />
+          </div>
+          <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; margin-top: 6px;">💾 ذخیره تمام تنظیمات در سیستم و فایل .env</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <div class="toast" id="toastBox"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

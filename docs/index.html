@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Arenatrade AI — داشبورد زنده فیوچرز و کپی‌تریدر</title>
+  <style>
+    :root {
+      --bg-main: #070b14;
+      --bg-card: #0e1525;
+      --bg-elevated: #17223b;
+      --border: #1e2d4a;
+      --border-bright: #2c426d;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent: #38bdf8;
+      --accent-indigo: #6366f1;
+      --long: #10b981;
+      --long-bg: rgba(16, 185, 129, 0.14);
+      --short: #f43f5e;
+      --short-bg: rgba(244, 63, 94, 0.14);
+      --warn: #f59e0b;
+      --warn-bg: rgba(245, 158, 11, 0.14);
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Tahoma, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(circle at 15% 0%, #0f1b36 0%, var(--bg-main) 55%);
+      color: var(--text-primary);
+      direction: rtl;
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    .ltr-num {
+      direction: ltr;
+      display: inline-block;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .topbar {
+      background: rgba(14, 21, 37, 0.95);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .topbar-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-logo {
+      width: 38px; height: 38px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent-indigo), var(--accent));
+      display: flex; align-items: center; justify-content: center; font-size: 19px;
+    }
+    .brand h1 { font-size: 0.98rem; font-weight: 800; color: #fff; }
+    .brand p { font-size: 0.72rem; color: var(--text-secondary); }
+    .pill {
+      font-size: 0.73rem; padding: 4px 10px; border-radius: 999px;
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--long); box-shadow: 0 0 8px var(--long); }
+    .ticker-strip {
+      max-width: 1400px; margin: 0 auto; padding: 8px 16px;
+      display: flex; gap: 8px; overflow-x: auto; border-top: 1px solid rgba(30,45,74,0.5);
+    }
+    .ticker-chip {
+      background: rgba(23,34,59,0.7); border: 1px solid var(--border);
+      border-radius: 9px; padding: 6px 11px; cursor: pointer;
+      display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 0.8rem;
+    }
+    .ticker-chip.active, .ticker-chip:hover { border-color: var(--accent); background: rgba(56,189,248,0.14); }
+    .up { color: var(--long); }
+    .down { color: var(--short); }
+    .neutral-txt { color: var(--warn); }
+    .container { max-width: 1400px; margin: 0 auto; padding: 14px 16px 48px; }
+    .nav-bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+    .tabs {
+      display: flex; flex-wrap: wrap; gap: 6px; background: var(--bg-card);
+      padding: 5px; border-radius: 11px; border: 1px solid var(--border); width: 100%;
+    }
+    .tab-btn {
+      flex: 1; min-width: 135px; background: transparent; color: var(--text-secondary);
+      border: none; padding: 8px 10px; border-radius: 8px; font-family: inherit;
+      font-size: 0.81rem; font-weight: 700; cursor: pointer;
+    }
+    .tab-btn.active { background: linear-gradient(135deg, var(--accent-indigo), #2563eb); color: #fff; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+    input, select {
+      background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary);
+      padding: 8px 11px; border-radius: 9px; font-family: inherit; font-size: 0.84rem; outline: none;
+    }
+    .btn {
+      background: var(--bg-elevated); color: #fff; border: 1px solid var(--border-bright);
+      padding: 8px 13px; border-radius: 9px; font-family: inherit; font-size: 0.82rem;
+      font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+    }
+    .btn-primary { background: linear-gradient(135deg, #2563eb, #0ea5e9); border-color: transparent; }
+    .btn-success { background: var(--long-bg); border-color: var(--long); color: #34d399; }
+    .btn-danger { background: var(--short-bg); border-color: var(--short); color: #fb7185; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 15px; margin-bottom: 14px; }
+    .hero-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 14px; }
+    @media (max-width: 960px) { .hero-grid { grid-template-columns: 1fr; } }
+    .dir-badge { font-size: 0.95rem; font-weight: 800; padding: 5px 13px; border-radius: 9px; display: inline-block; }
+    .dir-LONG { background: var(--long-bg); color: #34d399; border: 1px solid var(--long); }
+    .dir-SHORT { background: var(--short-bg); color: #fb7185; border: 1px solid var(--short); }
+    .dir-NEUTRAL { background: var(--warn-bg); color: #fbbf24; border: 1px solid var(--warn); }
+    .levels-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+    @media (max-width: 600px) { .levels-grid { grid-template-columns: repeat(2, 1fr); } }
+    .level-box { background: rgba(23,34,59,0.55); border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; }
+    .level-box .lbl { font-size: 0.71rem; color: var(--text-secondary); display: block; }
+    .level-box .val { font-size: 0.9rem; font-weight: 700; margin-top: 2px; }
+    .exec-box { background: rgba(56,189,248,0.08); border-right: 3px solid var(--accent); border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; margin-top: 8px; }
+    .chart-wrap { width: 100%; height: 300px; background: #090f1d; border-radius: 10px; border: 1px solid var(--border); overflow: hidden; }
+    #priceChart { width: 100%; height: 100%; display: block; }
+    .agents-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    @media (max-width: 960px) { .agents-grid { grid-template-columns: 1fr; } }
+    .agent-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 13px; }
+    .score-meter { margin: 9px 0; height: 6px; background: #1a243b; border-radius: 99px; position: relative; overflow: hidden; }
+    .score-meter::after { content:""; position:absolute; left:50%; top:0; bottom:0; width:2px; background:#475569; }
+    .score-fill { position:absolute; top:0; bottom:0; border-radius:99px; }
+    .strike-boxes { display: flex; gap: 8px; margin: 10px 0; }
+    .strike-slot { flex: 1; padding: 10px; border-radius: 9px; border: 1px dashed var(--border-bright); text-align: center; font-size: 0.8rem; }
+    .strike-slot.filled { background: var(--short-bg); border: 1px solid var(--short); color: #fda4af; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.79rem; }
+    th, td { padding: 8px 9px; text-align: right; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-secondary); background: rgba(23,34,59,0.45); }
+    .table-scroll { overflow-x: auto; }
+    .toast {
+      position: fixed; bottom: 18px; left: 18px; right: 18px; max-width: 420px;
+      background: #1e293b; border: 1px solid var(--accent); color: #fff;
+      padding: 11px 15px; border-radius: 10px; z-index: 200; font-size: 0.82rem; display: none;
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-logo">⚡</div>
+        <div>
+          <h1>Arenatrade AI — داشبورد زنده فیوچرز و کپی‌تریدر</h1>
+          <p>اتصال مستقیم و بدون قطعی به Hyperliquid + Binance (بدون نیاز به تونل کلودفلر)</p>
+        </div>
+      </div>
+      <span class="pill" id="liveBadge"><span class="dot"></span> دیتای زنده صرافی متصل است</span>
+    </div>
+    <div class="ticker-strip" id="tickerStrip"></div>
+  </header>
+
+  <main class="container">
+    <div class="nav-bar">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="analysis">🧠 تحلیل مستقل بازار</button>
+        <button class="tab-btn" data-tab="copy">🐋 کپی‌تریدر مستقل (۲ خطا)</button>
+        <button class="tab-btn" data-tab="tg">⚙️ اتصال تلگرام</button>
+      </div>
+      <div class="toolbar">
+        <input type="text" id="symInput" value="BTC" style="width:95px; text-transform:uppercase;" placeholder="BTC" />
+        <select id="tfSelect">
+          <option value="15m">15m</option>
+          <option value="1h" selected>1h</option>
+          <option value="4h">4h</option>
+        </select>
+        <button class="btn btn-primary" id="runBtn">🔍 تحلیل زنده</button>
+        <button class="btn btn-success" id="sendAnalysisTgBtn">✈️ ارسال تحلیل به تلگرام</button>
+      </div>
+    </div>
+
+    <!-- TAB 1: PURE MARKET ANALYSIS -->
+    <section class="tab-panel active" id="panel-analysis">
+      <div class="hero-grid">
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+              <div style="font-size:0.76rem; color:var(--text-secondary);" id="pairTitle">BTCUSDT.P • 1h</div>
+              <h2 style="font-size:1.38rem;" class="ltr-num" id="priceTitle">$--</h2>
+            </div>
+            <div style="text-align:left;">
+              <span class="dir-badge dir-NEUTRAL" id="dirBadge">در حال دریافت...</span>
+              <div style="font-size:0.74rem; color:var(--text-secondary); margin-top:4px;" id="confTitle">اطمینان: --%</div>
+            </div>
+          </div>
+
+          <div class="levels-grid">
+            <div class="level-box"><span class="lbl">📥 محدوده ورود</span><span class="val ltr-num" id="vEntry">--</span></div>
+            <div class="level-box"><span class="lbl">🛑 حد ضرر (SL)</span><span class="val down ltr-num" id="vSL">--</span></div>
+            <div class="level-box"><span class="lbl">⚡️ اهرم | R:R</span><span class="val ltr-num" id="vLev">--</span></div>
+            <div class="level-box"><span class="lbl">🎯 تارگت ۱ (TP1)</span><span class="val up ltr-num" id="vTP1">--</span></div>
+            <div class="level-box"><span class="lbl">🎯 تارگت ۲ (TP2)</span><span class="val up ltr-num" id="vTP2">--</span></div>
+            <div class="level-box"><span class="lbl">🎯 تارگت ۳ (TP3)</span><span class="val up ltr-num" id="vTP3">--</span></div>
+          </div>
+
+          <div class="exec-box" id="execSummary">در حال محاسبه همزمان پرایس اکشن، جریان ورود/خروج پول، RSI، MA، نواحی حمایت/مقاومت و خطوط روند...</div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.8rem;">
+            <strong>نمودار زنده کندلی + نواحی S/R + خطوط روند صعودی/نزولی</strong>
+            <span id="oiBadge" class="ltr-num" style="color:var(--accent);">OI: --</span>
+          </div>
+          <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+          <div style="display:flex; flex-wrap:wrap; gap:12px; font-size:0.72rem; color:var(--text-secondary); margin-top:7px;">
+            <span><b style="color:#10b981;">■</b> محدوده حمایت S1</span>
+            <span><b style="color:#a855f7;">■</b> محدوده مقاومت R1</span>
+            <span><b style="color:#f59e0b;">╲</b> خط روند نزولی</span>
+            <span><b style="color:#38bdf8;">╱</b> خط روند صعودی</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comparison + S/R + Trendline Card -->
+      <div class="card">
+        <strong style="font-size:0.88rem;">🔄 مقایسه با تحلیل قبلی + وضعیت محدوده‌های حمایت/مقاومت و خطوط روند</strong>
+        <div class="levels-grid" id="srGrid" style="margin-top:10px;"></div>
+        <div class="exec-box" style="border-right-color:#a855f7; background:rgba(168,85,247,0.08);" id="compText">--</div>
+      </div>
+
+      <div class="agents-grid" id="agentsBox"></div>
+    </section>
+
+    <!-- TAB 2: INDEPENDENT COPY TRADER -->
+    <section class="tab-panel" id="panel-copy">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div>
+            <span class="pill" style="color:#34d399; border-color:#10b981;">تریدر مرجع فعال (مستقل از تحلیل تکنیکال)</span>
+            <h2 style="font-size:1.15rem; margin-top:6px;" id="whaleName">در حال بارگذاری لیدربورد Hyperliquid...</h2>
+            <div class="ltr-num" style="font-size:0.74rem; color:var(--text-muted);" id="whaleAddr">--</div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button class="btn btn-primary" id="sendCopySigBtn">🐋 ارسال سیگنال مستقل کپی به تلگرام</button>
+            <button class="btn" id="reloadWhalesBtn">🔄 بروزرسانی زنده نهنگ‌ها</button>
+          </div>
+        </div>
+
+        <div class="levels-grid">
+          <div class="level-box"><span class="lbl">سرمایه نهنگ</span><span class="val ltr-num" id="whaleEq">--</span></div>
+          <div class="level-box"><span class="lbl">بازدهی ۳۰ روزه</span><span class="val up ltr-num" id="whaleRoi">--</span></div>
+          <div class="level-box"><span class="lbl">سود ۳۰ روزه</span><span class="val up ltr-num" id="whalePnl">--</span></div>
+        </div>
+
+        <div style="font-size:0.82rem; font-weight:700; margin-top:8px;">🛡 قانون «تعویض خودکار پس از ۲ اشتباه متوالی»:</div>
+        <div class="strike-boxes" id="strikeSlots"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+          <button class="btn btn-danger" id="btnLoss">❌ ثبت ۱ اشتباه (تست استاپ)</button>
+          <button class="btn btn-success" id="btnWin">✅ ثبت ۱ برد (ریست به 0/2)</button>
+        </div>
+
+        <h4 style="font-size:0.85rem; margin-bottom:6px;">📌 پوزیشن‌های فیوچرز بازِ این تریدر در همین لحظه:</h4>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>ارز</th><th>جهت</th><th>حجم پوزیشن</th><th>ورود نهنگ</th><th>اهرم</th><th>سود/ضرر</th></tr></thead>
+            <tbody id="whalePosBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h4 style="font-size:0.88rem; margin-bottom:8px;">🏆 لیست تریدرهای موفق جایگزین (لیدربورد زنده Hyperliquid)</h4>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>رتبه</th><th>نهنگ</th><th>وضعیت</th><th>سرمایه</th><th>ROI ماهانه</th><th>انتخاب</th></tr></thead>
+            <tbody id="whaleRosterBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: TELEGRAM CONNECTION -->
+    <section class="tab-panel" id="panel-tg">
+      <div class="card">
+        <h3 style="font-size:0.95rem; margin-bottom:10px;">✈️ تنظیمات ارسال مستقیم به تلگرام از مرورگر شما</h3>
+        <p style="font-size:0.78rem; color:var(--text-secondary); margin-bottom:12px;">
+          اطلاعات زیر فقط در حافظه خصوصی مرورگر گوشی خودتان (`localStorage`) ذخیره می‌شود تا بتوانید مستقیماً از همین داشبورد سیگنال‌های تحلیل و کپی‌تریدر را به تلگرام بفرستید:
+        </p>
+        <div style="display:grid; gap:10px; max-width:520px;">
+          <div>
+            <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:4px;">توکن ربات (TELEGRAM_BOT_TOKEN)</label>
+            <input type="password" id="tgTokenInp" style="width:100%;" class="ltr-num" placeholder="123456789:ABC..." />
+          </div>
+          <div>
+            <label style="font-size:0.78rem; color:var(--text-secondary); display:block; margin-bottom:4px;">آیدی چت / کانال / گروه (TELEGRAM_CHAT_ID)</label>
+            <input type="text" id="tgChatInp" style="width:100%;" class="ltr-num" placeholder="Chat ID یا @channel" />
+          </div>
+          <button class="btn btn-primary" id="saveTgBtn">💾 ذخیره و ارسال پیام تست به تلگرام</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // Parse optional private #hash credentials on first open and strip from URL immediately
+    if (location.hash && location.hash.length > 3) {
+      const p = new URLSearchParams(location.hash.slice(1));
+      if (p.get("tok")) localStorage.setItem("at_tg_tok", p.get("tok"));
+      if (p.get("chat")) localStorage.setItem("at_tg_chat", p.get("chat"));
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+
+    const WATCHLIST = ["BTC", "ETH", "SOL", "XRP", "DOGE", "SUI", "AVAX", "LINK"];
+    let hlCtxMap = {};
+    let currentSig = null;
+    let currentCandles = [];
+    let whales = [];
+    let activeWhaleIdx = 0;
+
+    function fmt(n) {
+      const v = Number(n || 0);
+      if (Math.abs(v) >= 1000) return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      if (Math.abs(v) >= 1) return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+      return v.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+    }
+
+    function toast(m) {
+      const t = document.getElementById("toast");
+      t.textContent = m;
+      t.style.display = "block";
+      clearTimeout(window._tt);
+      window._tt = setTimeout(() => (t.style.display = "none"), 4000);
+    }
+
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach((x) => x.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        document.getElementById("panel-" + b.dataset.tab).classList.add("active");
+        if (b.dataset.tab === "copy" && !whales.length) loadWhales();
+        if (b.dataset.tab === "analysis" && currentCandles.length) setTimeout(drawChart, 60);
+      });
+    });
+
+    async function loadTickers() {
+      try {
+        const r = await fetch("https://api.hyperliquid.xyz/info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "metaAndAssetCtxs" }),
+        });
+        const [meta, ctxs] = await r.json();
+        meta.universe.forEach((u, i) => {
+          const c = ctxs[i];
+          const px = Number(c.markPx || c.midPx || 0);
+          const prev = Number(c.prevDayPx || px || 1);
+          hlCtxMap[u.name.toUpperCase()] = {
+            px,
+            chg: ((px - prev) / prev) * 100,
+            oiUsd: Number(c.openInterest || 0) * px,
+            funding8h: Number(c.funding || 0) * 800,
+          };
+        });
+        const strip = document.getElementById("tickerStrip");
+        strip.innerHTML = "";
+        const curSym = document.getElementById("symInput").value.toUpperCase();
+        WATCHLIST.forEach((s) => {
+          const d = hlCtxMap[s];
+          if (!d) return;
+          const div = document.createElement("div");
+          div.className = "ticker-chip " + (s === curSym ? "active" : "");
+          div.innerHTML = `<b>${s}</b> <span class="ltr-num">$${fmt(d.px)}</span> <span class="${d.chg >= 0 ? "up" : "down"} ltr-num">${d.chg >= 0 ? "+" : ""}${d.chg.toFixed(2)}%</span>`;
+          div.onclick = () => {
+            document.getElementById("symInput").value = s;
+            runLiveAnalysis();
+          };
+          strip.appendChild(div);
+        });
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    async function fetchCandles(coin, tf) {
+      const stepMap = { "15m": 900000, "1h": 3600000, "4h": 14400000 };
+      const step = stepMap[tf] || 3600000;
+      const now = Date.now();
+      try {
+        const r = await fetch("https://api.hyperliquid.xyz/info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "candleSnapshot",
+            req: { coin, interval: tf, startTime: now - step * 210, endTime: now },
+          }),
+        });
+        const arr = await r.json();
+        if (Array.isArray(arr) && arr.length > 40) {
+          return arr.map((x) => ({
+            t: Number(x.t), o: Number(x.o), h: Number(x.h), l: Number(x.l), c: Number(x.c), v: Number(x.v) * Number(x.c),
+          }));
+        }
+      } catch (e) {}
+      const r2 = await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${coin}USDT&interval=${tf}&limit=210`);
+      const arr2 = await r2.json();
+      return arr2.map((x) => ({
+        t: Number(x[0]), o: Number(x[1]), h: Number(x[2]), l: Number(x[3]), c: Number(x[4]), v: Number(x[7]),
+      }));
+    }
+
+    function ema(arr, span) {
+      const k = 2 / (span + 1);
+      let out = [arr[0]];
+      for (let i = 1; i < arr.length; i++) out.push(arr[i] * k + out[i - 1] * (1 - k));
+      return out;
+    }
+
+    function sma(arr, p) {
+      const slice = arr.slice(-p);
+      return slice.reduce((a, b) => a + b, 0) / slice.length;
+    }
+
+    function calcRSI(closes, p = 14) {
+      let avgG = 0, avgL = 0;
+      for (let i = 1; i <= p; i++) {
+        const d = closes[i] - closes[i - 1];
+        if (d >= 0) avgG += d; else avgL -= d;
+      }
+      avgG /= p; avgL /= p;
+      for (let i = p + 1; i < closes.length; i++) {
+        const d = closes[i] - closes[i - 1];
+        avgG = (avgG * (p - 1) + (d > 0 ? d : 0)) / p;
+        avgL = (avgL * (p - 1) + (d < 0 ? -d : 0)) / p;
+      }
+      const rs = avgG / (avgL + 1e-9);
+      return 100 - 100 / (1 + rs);
+    }
+
+    async function runLiveAnalysis() {
+      const coin = (document.getElementById("symInput").value || "BTC").trim().toUpperCase().replace("USDT", "");
+      const tf = document.getElementById("tfSelect").value;
+      const btn = document.getElementById("runBtn");
+      btn.disabled = true; btn.textContent = "⏳ در حال تحلیل...";
+
+      try {
+        await loadTickers();
+        const [candles, candles15] = await Promise.all([
+          fetchCandles(coin, tf),
+          tf === "15m" ? Promise.resolve(null) : fetchCandles(coin, "15m"),
+        ]);
+        const ltf = candles15 || candles;
+        currentCandles = candles.slice(-75);
+
+        const closes = candles.map((c) => c.c);
+        const highs = candles.map((c) => c.h);
+        const lows = candles.map((c) => c.l);
+        const px = closes[closes.length - 1];
+
+        // ATR 14
+        let trs = [];
+        for (let i = 1; i < candles.length; i++) {
+          trs.push(Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1])));
+        }
+        const atr = sma(trs, 14);
+
+        // Indicators: RSI, MA20, MA50, MA200, MACD
+        const rsi = calcRSI(closes, 14);
+        const rsi15 = calcRSI(ltf.map((x) => x.c), 14);
+        const ma20 = sma(closes, 20);
+        const ma50 = sma(closes, 50);
+        const ma200 = sma(closes, Math.min(200, closes.length));
+        const e12 = ema(closes, 12), e26 = ema(closes, 26);
+        const macdLine = e12.map((v, i) => v - e26[i]);
+        const sigLine = ema(macdLine, 9);
+        const macdHist = macdLine[macdLine.length - 1] - sigLine[sigLine.length - 1];
+
+        // Money Flow (1h & 15m net USD signed flow + MFI)
+        const calcFlow = (arr, n) => arr.slice(-n).reduce((acc, c) => {
+          const ratio = (c.c - c.l) / Math.max(c.h - c.l, 1e-9);
+          return acc + c.v * (2 * ratio - 1);
+        }, 0);
+        const flow15m = calcFlow(ltf, 1);
+        const flow1h = calcFlow(ltf, 4);
+        const hlInfo = hlCtxMap[coin] || { oiUsd: 0, funding8h: 0 };
+
+        // Support & Resistance Zones + Diagonal Trendlines
+        let pivots = [];
+        for (let i = candles.length - 85; i < candles.length - 3; i++) {
+          if (i < 3) continue;
+          const isHi = highs[i] >= Math.max(...highs.slice(i - 3, i + 4));
+          const isLo = lows[i] <= Math.min(...lows.slice(i - 3, i + 4));
+          if (isHi) pivots.push({ idx: i, t: candles[i].t, p: highs[i], kind: "H" });
+          if (isLo) pivots.push({ idx: i, t: candles[i].t, p: lows[i], kind: "L" });
+        }
+        const supList = pivots.filter((x) => x.p < px * 0.999).map((x) => x.p).sort((a, b) => b - a);
+        const resList = pivots.filter((x) => x.p > px * 1.001).map((x) => x.p).sort((a, b) => a - b);
+        const s1Mid = supList[0] || px - 1.6 * atr;
+        const r1Mid = resList[0] || px + 1.6 * atr;
+        const s1Zone = { low: s1Mid - 0.22 * atr, high: s1Mid + 0.22 * atr, mid: s1Mid };
+        const r1Zone = { low: r1Mid - 0.22 * atr, high: r1Mid + 0.22 * atr, mid: r1Mid };
+
+        // Fit Descending & Ascending Trendlines on recent swing pivots
+        const hiPivs = pivots.filter((x) => x.kind === "H");
+        const loPivs = pivots.filter((x) => x.kind === "L");
+        let descTl = null, ascTl = null;
+        if (hiPivs.length >= 2) {
+          const a = hiPivs[hiPivs.length - 2], b = hiPivs[hiPivs.length - 1];
+          if (b.p < a.p && b.idx > a.idx) {
+            const slope = (b.p - a.p) / (b.idx - a.idx);
+            const pNow = a.p + slope * (candles.length - 1 - a.idx);
+            descTl = { t1: a.t, p1: a.p, t2: candles[candles.length - 1].t, p2: pNow, statusFa: px > pNow ? "شکست خط روند نزولی به بالا 🚀" : "مقاومت خط روند نزولی فعال 🛑", broke: px > pNow };
+          }
+        }
+        if (loPivs.length >= 2) {
+          const a = loPivs[loPivs.length - 2], b = loPivs[loPivs.length - 1];
+          if (b.p > a.p && b.idx > a.idx) {
+            const slope = (b.p - a.p) / (b.idx - a.idx);
+            const pNow = a.p + slope * (candles.length - 1 - a.idx);
+            ascTl = { t1: a.t, p1: a.p, t2: candles[candles.length - 1].t, p2: pNow, statusFa: px < pNow ? "شکست خط روند صعودی به پایین 📉" : "حمایت خط روند صعودی معتبر 🎯", broke: px < pNow };
+          }
+        }
+
+        // Agent Scores
+        const paScore = Math.max(-90, Math.min(90, ((px - closes[closes.length - 5]) / atr) * 20));
+        const mfScore = Math.max(-90, Math.min(90, (flow1h >= 0 ? 28 : -28) + (hlInfo.funding8h < 0 ? 12 : -4)));
+        const indScore = Math.max(-90, Math.min(90, (rsi > 53 ? 18 : rsi < 47 ? -18 : 0) + (px > ma20 && ma20 > ma50 ? 26 : px < ma20 && ma20 < ma50 ? -26 : 0) + (macdHist > 0 ? 16 : -16)));
+        const trScore = (px > ma50 ? 25 : -25) + (ma50 > ma200 ? 22 : -22);
+        const srScore = (descTl?.broke ? 28 : 0) - (ascTl?.broke ? 28 : 0) + (((r1Mid - px) - (px - s1Mid)) / Math.max(r1Mid - s1Mid, atr)) * 30;
+
+        // Compare vs Previous Saved Scan in localStorage
+        const memKey = `at_prev_${coin}_${tf}`;
+        const prevRaw = localStorage.getItem(memKey);
+        let compScore = 0, compHtml = "";
+        const preComposite = paScore * 0.16 + mfScore * 0.2 + indScore * 0.18 + trScore * 0.22 + srScore * 0.24;
+
+        if (prevRaw) {
+          const prev = JSON.parse(prevRaw);
+          let srFlip = "نوسان داخل کانال حمایت و مقاومت قبلی";
+          if (prev.px <= prev.r1High && px > prev.r1High) { srFlip = `🚀 شکست مقاومت قبلی ($${fmt(prev.r1Mid)}) و تبدیل به حمایت (S/R Flip)`; compScore += 30; }
+          else if (prev.px >= prev.s1Low && px < prev.s1Low) { srFlip = `📉 از دست رفتن حمایت قبلی ($${fmt(prev.s1Mid)}) و تبدیل به مقاومت`; compScore -= 30; }
+          const dPct = (((px - prev.px) / prev.px) * 100).toFixed(2);
+          compHtml = `<b>نسبت به تحلیل قبلی (${prev.time}):</b> ${srFlip} | تغییر قیمت: <span class="ltr-num">${dPct}%</span> | RSI: <span class="ltr-num">${prev.rsi.toFixed(1)} ⬅️ ${rsi.toFixed(1)}</span> | امتیاز: <span class="ltr-num">${prev.score.toFixed(1)} ⬅️ ${preComposite.toFixed(1)}</span>`;
+        } else {
+          compHtml = "نقطه مرجع اولیه (Baseline) برای این ارز ذخیره شد؛ در هر تحلیل بعدی، شکست حمایت/مقاومت و تغییرات خط روند و RSI با این لحظه مقایسه می‌شوند.";
+        }
+
+        const totalScore = Math.round((preComposite * 0.88 + compScore * 0.12) * 10) / 10;
+        localStorage.setItem(memKey, JSON.stringify({
+          px, s1Low: s1Zone.low, s1Mid, r1High: r1Zone.high, r1Mid, rsi, score: totalScore,
+          time: new Date().toLocaleTimeString("fa-IR"),
+        }));
+
+        const dir = totalScore >= 16 ? "LONG" : totalScore <= -16 ? "SHORT" : "NEUTRAL";
+        const conf = Math.min(95, Math.round(48 + Math.abs(totalScore) * 0.58));
+        const isLong = dir === "LONG" || (dir === "NEUTRAL" && totalScore >= 0);
+        const sl = isLong ? Math.min(s1Zone.low - 0.2 * atr, px - 1.6 * atr) : Math.max(r1Zone.high + 0.2 * atr, px + 1.6 * atr);
+        const risk = Math.abs(px - sl);
+        const tp1 = isLong ? px + 1.3 * risk : px - 1.3 * risk;
+        const tp2 = isLong ? px + 2.2 * risk : px - 2.2 * risk;
+        const tp3 = isLong ? px + 3.4 * risk : px - 3.4 * risk;
+        const lev = Math.max(2, Math.min(10, Math.round(14 / ((risk / px) * 100))));
+
+        currentSig = { coin, tf, px, dir, conf, totalScore, sl, tp1, tp2, tp3, lev, flow1h, flow15m, rsi, rsi15, ma20, ma50, ma200, s1Zone, r1Zone, descTl, ascTl, hlInfo, compHtml };
+
+        // Render Hero
+        document.getElementById("pairTitle").textContent = `${coin}USDT.P • تایم‌فریم ${tf} • تحلیل مستقل بازار`;
+        document.getElementById("priceTitle").textContent = `$${fmt(px)}`;
+        const b = document.getElementById("dirBadge");
+        b.className = `dir-badge dir-${dir}`;
+        b.textContent = dir === "LONG" ? "🟢 LONG (خرید)" : dir === "SHORT" ? "🔴 SHORT (فروش)" : "⚪️ NEUTRAL (خنثی)";
+        document.getElementById("confTitle").textContent = `اطمینان: ${conf}% | برآیند: ${totalScore > 0 ? "+" : ""}${totalScore}`;
+        document.getElementById("vEntry").textContent = `$${fmt(px * 0.999)} - $${fmt(px * 1.001)}`;
+        document.getElementById("vSL").textContent = `$${fmt(sl)}`;
+        document.getElementById("vLev").textContent = `${lev}x | R:R 1:2.2`;
+        document.getElementById("vTP1").textContent = `$${fmt(tp1)}`;
+        document.getElementById("vTP2").textContent = `$${fmt(tp2)}`;
+        document.getElementById("vTP3").textContent = `$${fmt(tp3)}`;
+        document.getElementById("oiBadge").textContent = `OI: $${(hlInfo.oiUsd / 1e6).toFixed(1)}M | Funding: ${hlInfo.funding8h.toFixed(4)}%`;
+        document.getElementById("execSummary").textContent =
+          `برآیند مستقل ایجنت‌های بازار روی ${coin}: خالص جریان پول ۱ ساعته ${(flow1h / 1e6).toFixed(2)}M$، اندیکاتور RSI=${rsi.toFixed(1)}، میانگین MA50=$${fmt(ma50)}.`;
+
+        document.getElementById("srGrid").innerHTML = `
+          <div class="level-box"><span class="lbl">🟢 محدوده حمایت اول (S1)</span><span class="val up ltr-num">$${fmt(s1Zone.low)} – $${fmt(s1Zone.high)}</span></div>
+          <div class="level-box"><span class="lbl">🔴 محدوده مقاومت اول (R1)</span><span class="val down ltr-num">$${fmt(r1Zone.low)} – $${fmt(r1Zone.high)}</span></div>
+          <div class="level-box"><span class="lbl">📉 خط روند نزولی</span><span class="val ltr-num">${descTl ? "$" + fmt(descTl.p2) : "—"}</span><small style="color:#fbbf24;display:block;font-size:0.7rem;">${descTl ? descTl.statusFa : "ندارد"}</small></div>
+          <div class="level-box"><span class="lbl">📈 خط روند صعودی</span><span class="val ltr-num">${ascTl ? "$" + fmt(ascTl.p2) : "—"}</span><small style="color:#38bdf8;display:block;font-size:0.7rem;">${ascTl ? ascTl.statusFa : "ندارد"}</small></div>
+        `;
+        document.getElementById("compText").innerHTML = compHtml;
+
+        const agents = [
+          { name: "۱. ایجنت پرایس اکشن و نوسان ATR", s: paScore, d: `نوسان ATR کندلی: $${fmt(atr)} (${((atr / px) * 100).toFixed(2)}%)` },
+          { name: "۲. ایجنت جریان ورود و خروج پول", s: mfScore, d: `خالص ۱ ساعته: ${(flow1h / 1e6).toFixed(2)}M$ | ۱۵ دقیقه: ${(flow15m / 1e6).toFixed(2)}M$` },
+          { name: "۳. ایجنت اندیکاتورها (RSI & MA)", s: indScore, d: `RSI(15m/1h): ${rsi15.toFixed(1)} / ${rsi.toFixed(1)} | MA20=$${fmt(ma20)} | MA50=$${fmt(ma50)}` },
+          { name: "۴. ایجنت تشخیص روند و ساختار", s: trScore, d: `MA200=$${fmt(ma200)} | جایگاه قیمت: ${px > ma50 ? "بالای MA50 صعودی" : "زیر MA50 نزولی"}` },
+          { name: "۵. ایجنت حمایت/مقاومت و خط روند", s: srScore, d: `حمایت $${fmt(s1Mid)} | مقاومت $${fmt(r1Mid)}` },
+          { name: "۶. ایجنت مقایسه زمانی با تحلیل قبلی", s: compScore, d: "پایش شکست سطوح S/R Flip و تغییر شیب RSI" },
+        ];
+        document.getElementById("agentsBox").innerHTML = agents.map((a) => {
+          const w = Math.min(50, Math.abs(a.s) / 2);
+          const l = a.s >= 0 ? 50 : 50 - w;
+          const col = a.s >= 14 ? "var(--long)" : a.s <= -14 ? "var(--short)" : "var(--warn)";
+          return `<div class="agent-card">
+            <div style="display:flex;justify-content:space-between;"><b>${a.name}</b><span class="ltr-num" style="color:${col};font-weight:800;">${a.s > 0 ? "+" : ""}${Math.round(a.s)}</span></div>
+            <div class="score-meter"><div class="score-fill" style="left:${l}%;width:${w}%;background:${col};"></div></div>
+            <div style="font-size:0.77rem;color:var(--text-secondary);">${a.d}</div>
+          </div>`;
+        }).join("");
+
+        drawChart();
+      } catch (err) {
+        toast("خطا در دریافت دیتای زنده: " + err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = "🔍 تحلیل زنده";
+      }
+    }
+
+    function drawChart() {
+      const canvas = document.getElementById("priceChart");
+      if (!canvas || !currentCandles.length || !currentSig) return;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+      const ctx = canvas.getContext("2d");
+      ctx.scale(dpr, dpr);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      let minP = Math.min(...currentCandles.map((c) => c.l), currentSig.sl, currentSig.tp1);
+      let maxP = Math.max(...currentCandles.map((c) => c.h), currentSig.sl, currentSig.tp1);
+      const pad = (maxP - minP) * 0.08 || 1;
+      minP -= pad; maxP += pad;
+
+      const pR = 68, pL = 10, pT = 12, pB = 18;
+      const pW = W - pL - pR, pH = H - pT - pB;
+      const yOf = (p) => pT + ((maxP - p) / (maxP - minP)) * pH;
+
+      // S1 & R1 Shaded Zones
+      ctx.fillStyle = "rgba(16,185,129,0.14)";
+      ctx.fillRect(pL, yOf(currentSig.s1Zone.high), pW, Math.max(4, yOf(currentSig.s1Zone.low) - yOf(currentSig.s1Zone.high)));
+      ctx.fillStyle = "rgba(168,85,247,0.16)";
+      ctx.fillRect(pL, yOf(currentSig.r1Zone.high), pW, Math.max(4, yOf(currentSig.r1Zone.low) - yOf(currentSig.r1Zone.high)));
+
+      const lineH = (p, col, lbl) => {
+        if (p < minP || p > maxP) return;
+        const y = yOf(p);
+        ctx.strokeStyle = col; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(pL, y); ctx.lineTo(W - pR, y); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = col; ctx.font = "10px monospace"; ctx.fillText(lbl, W - pR + 4, y + 3);
+      };
+      lineH(currentSig.sl, "#f43f5e", "SL");
+      lineH(currentSig.tp1, "#10b981", "TP1");
+      lineH(currentSig.tp2, "#34d399", "TP2");
+
+      const step = pW / currentCandles.length;
+      const drawTL = (tl, col) => {
+        if (!tl) return;
+        let i1 = currentCandles.findIndex((c) => c.t >= tl.t1);
+        if (i1 < 0) i1 = 0;
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath();
+        ctx.moveTo(pL + i1 * step + step / 2, yOf(tl.p1));
+        ctx.lineTo(pL + (currentCandles.length - 1) * step + step / 2, yOf(tl.p2));
+        ctx.stroke();
+      };
+      drawTL(currentSig.descTl, "#f59e0b");
+      drawTL(currentSig.ascTl, "#38bdf8");
+
+      const bw = Math.max(2, step * 0.62);
+      currentCandles.forEach((c, i) => {
+        const x = pL + i * step + step / 2;
+        const up = c.c >= c.o;
+        ctx.strokeStyle = up ? "#10b981" : "#f43f5e";
+        ctx.fillStyle = up ? "#10b981" : "#f43f5e";
+        ctx.lineWidth = 1.1;
+        ctx.beginPath(); ctx.moveTo(x, yOf(c.h)); ctx.lineTo(x, yOf(c.l)); ctx.stroke();
+        const y1 = yOf(c.o), y2 = yOf(c.c);
+        ctx.fillRect(x - bw / 2, Math.min(y1, y2), bw, Math.max(1.5, Math.abs(y2 - y1)));
+      });
+    }
+
+    // Independent Copy-Trader Live Loader (Hyperliquid Leaderboard + Clearinghouse)
+    async function loadWhales() {
+      document.getElementById("whaleName").textContent = "⏳ در حال دریافت لیست نهنگ‌های سودده از Hyperliquid...";
+      try {
+        const r = await fetch("https://stats-data.hyperliquid.xyz/Mainnet/leaderboard");
+        const d = await r.json();
+        const cands = [];
+        for (const row of (d.leaderboardRows || []).slice(0, 800)) {
+          const eq = Number(row.accountValue || 0);
+          if (eq < 50000 || eq > 90000000) continue;
+          const perf = Object.fromEntries(row.windowPerformances || []);
+          const mPnl = Number(perf.month?.pnl || 0);
+          const mRoi = Number(perf.month?.roi || 0) * 100;
+          const wPnl = Number(perf.week?.pnl || 0);
+          if (mPnl > 0 && wPnl > 0 && mRoi > 8 && mRoi < 600) {
+            cands.push({
+              addr: row.ethAddress,
+              name: row.displayName || `Whale-${row.ethAddress.slice(2, 6).toUpperCase()}`,
+              eq, mPnl, mRoi, losses: 0, status: "STANDBY", positions: [],
+            });
+          }
+          if (cands.length >= 10) break;
+        }
+        // Fetch live positions of top 4 candidates
+        await Promise.all(cands.slice(0, 4).map(async (w) => {
+          const pr = await fetch("https://api.hyperliquid.xyz/info", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "clearinghouseState", user: w.addr }),
+          });
+          const st = await pr.json();
+          w.positions = (st.assetPositions || []).map((ap) => {
+            const p = ap.position;
+            const sz = Number(p.szi || 0);
+            return {
+              coin: p.coin, dir: sz > 0 ? "LONG" : "SHORT",
+              val: Number(p.positionValue || 0), entry: Number(p.entryPx || 0),
+              lev: p.leverage?.value || 3, upnl: Number(p.unrealizedPnl || 0),
+            };
+          }).filter((p) => p.val > 1000);
+        }));
+        whales = cands;
+        activeWhaleIdx = Math.max(0, whales.findIndex((w) => w.positions.length > 0));
+        if (whales[activeWhaleIdx]) whales[activeWhaleIdx].status = "ACTIVE";
+        renderWhales();
+      } catch (e) {
+        toast("خطا در دریافت لیدربورد: " + e.message);
+      }
+    }
+
+    function renderWhales() {
+      const w = whales[activeWhaleIdx];
+      if (!w) return;
+      document.getElementById("whaleName").textContent = w.name;
+      document.getElementById("whaleAddr").textContent = w.addr;
+      document.getElementById("whaleEq").textContent = "$" + Math.round(w.eq).toLocaleString("en-US");
+      document.getElementById("whaleRoi").textContent = "+" + w.mRoi.toFixed(1) + "%";
+      document.getElementById("whalePnl").textContent = "+$" + Math.round(w.mPnl).toLocaleString("en-US");
+
+      document.getElementById("strikeSlots").innerHTML = [1, 2].map((i) =>
+        `<div class="strike-slot ${w.losses >= i ? "filled" : ""}">${w.losses >= i ? `❌ خطای متوالی ${i} ثبت شد` : `خطای متوالی ${i}: خالی ✓`}</div>`
+      ).join("");
+
+      document.getElementById("whalePosBody").innerHTML = w.positions.length
+        ? w.positions.map((p) => `<tr><td><b>${p.coin}</b></td><td class="${p.dir === "LONG" ? "up" : "down"} ltr-num"><b>${p.dir}</b></td><td class="ltr-num">$${Math.round(p.val).toLocaleString("en-US")}</td><td class="ltr-num">$${fmt(p.entry)}</td><td class="ltr-num">${p.lev}x</td><td class="${p.upnl >= 0 ? "up" : "down"} ltr-num">${p.upnl >= 0 ? "+" : ""}$${Math.round(p.upnl).toLocaleString("en-US")}</td></tr>`).join("")
+        : `<tr><td colspan="6" style="color:var(--text-muted);">این نهنگ در این لحظه پوزیشن بازی ندارد.</td></tr>`;
+
+      document.getElementById("whaleRosterBody").innerHTML = whales.map((item, idx) => `
+        <tr>
+          <td class="ltr-num">#${idx + 1}</td>
+          <td><b>${item.name}</b></td>
+          <td>${idx === activeWhaleIdx ? '<span class="up">🟢 فعال</span>' : item.status === "OUT" ? '<span class="down">❌ حذف‌شده (۲ خطا)</span>' : "⏳ آماده"}</td>
+          <td class="ltr-num">$${Math.round(item.eq).toLocaleString("en-US")}</td>
+          <td class="up ltr-num">+${item.mRoi.toFixed(1)}%</td>
+          <td>${idx !== activeWhaleIdx ? `<button class="btn" style="padding:3px 8px;font-size:0.73rem;" onclick="pickWhale(${idx})">انتخاب</button>` : "—"}</td>
+        </tr>`).join("");
+    }
+
+    window.pickWhale = (idx) => {
+      if (whales[activeWhaleIdx]) whales[activeWhaleIdx].status = "STANDBY";
+      activeWhaleIdx = idx;
+      whales[activeWhaleIdx].status = "ACTIVE";
+      whales[activeWhaleIdx].losses = 0;
+      renderWhales();
+    };
+
+    document.getElementById("btnLoss").onclick = () => {
+      const w = whales[activeWhaleIdx];
+      if (!w) return;
+      w.losses++;
+      if (w.losses >= 2) {
+        w.status = "OUT";
+        const nextIdx = whales.findIndex((x, i) => i !== activeWhaleIdx && x.status !== "OUT");
+        if (nextIdx >= 0) {
+          const oldName = w.name;
+          activeWhaleIdx = nextIdx;
+          whales[activeWhaleIdx].status = "ACTIVE";
+          whales[activeWhaleIdx].losses = 0;
+          toast(`🔄 ۲ خطای متوالی! ${oldName} حذف شد و ${whales[activeWhaleIdx].name} جایگزین گردید.`);
+        }
+      } else {
+        toast("⚠️ اولین خطا ثبت شد (1/2).");
+      }
+      renderWhales();
+    };
+
+    document.getElementById("btnWin").onclick = () => {
+      const w = whales[activeWhaleIdx];
+      if (!w) return;
+      w.losses = 0;
+      renderWhales();
+      toast("✅ برد ثبت شد؛ شمارنده خطا به 0/2 ریست شد.");
+    };
+
+    document.getElementById("reloadWhalesBtn").onclick = loadWhales;
+
+    async function sendTgHtml(text) {
+      const tok = (localStorage.getItem("at_tg_tok") || document.getElementById("tgTokenInp").value || "").trim();
+      const chat = (localStorage.getItem("at_tg_chat") || document.getElementById("tgChatInp").value || "").trim();
+      if (!tok || !chat) {
+        document.querySelector('[data-tab="tg"]').click();
+        toast("ابتدا توکن ربات و آیدی چت را در تب اتصال تلگرام وارد کنید.");
+        return;
+      }
+      const r = await fetch(`https://api.telegram.org/bot${tok}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chat, text, parse_mode: "HTML" }),
+      });
+      const d = await r.json();
+      if (d.ok) toast("✅ پیام با موفقیت به تلگرام ارسال شد!");
+      else toast("❌ خطای تلگرام: " + (d.description || "نامشخص"));
+    }
+
+    document.getElementById("sendAnalysisTgBtn").onclick = () => {
+      if (!currentSig) return;
+      const s = currentSig;
+      const msg =
+        `🧠 <b>سیگنال مستقل تحلیل بازار | #${s.coin}USDT</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+        `📌 جهت: <code>${s.dir}</code> | اطمینان: <code>${s.conf}%</code>\n` +
+        `🔹 قیمت فعلی: <code>$${fmt(s.px)}</code> | اهرم: <code>${s.lev}x</code>\n` +
+        `🎯 TP1: <code>$${fmt(s.tp1)}</code> | TP2: <code>$${fmt(s.tp2)}</code> | TP3: <code>$${fmt(s.tp3)}</code>\n` +
+        `🛑 حد ضرر (SL): <code>$${fmt(s.sl)}</code>\n\n` +
+        `💵 جریان ۱ساعته: <code>${(s.flow1h / 1e6).toFixed(2)}M$</code>\n` +
+        `📊 اندیکاتورها: <code>RSI=${s.rsi.toFixed(1)} | MA20=$${fmt(s.ma20)} | MA50=$${fmt(s.ma50)}</code>\n` +
+        `📐 حمایت S1: <code>$${fmt(s.s1Zone.low)}–$${fmt(s.s1Zone.high)}</code> | مقاومت R1: <code>$${fmt(s.r1Zone.low)}–$${fmt(s.r1Zone.high)}</code>`;
+      sendTgHtml(msg);
+    };
+
+    document.getElementById("sendCopySigBtn").onclick = () => {
+      const w = whales[activeWhaleIdx];
+      if (!w || !w.positions.length) { toast("این نهنگ فعلاً پوزیشن بازی برای ارسال ندارد."); return; }
+      const p = w.positions[0];
+      const msg =
+        `🐋 <b>سیگنال مستقل کپی‌تریدر | #${p.coin}USDT</b>\n━━━━━━━━━━━━━━━━━━━━\n` +
+        `👤 نهنگ مرجع: <code>${w.name}</code> (ROI ماهانه: <code>+${w.mRoi.toFixed(1)}%</code> | خطا: <code>${w.losses}/2</code>)\n` +
+        `📌 جهت پوزیشن نهنگ: <code>${p.dir}</code> (اهرم <code>${p.lev}x</code>)\n` +
+        `💵 حجم پوزیشن: <code>$${Math.round(p.val).toLocaleString("en-US")}</code> | ورود نهنگ: <code>$${fmt(p.entry)}</code>`;
+      sendTgHtml(msg);
+    };
+
+    document.getElementById("saveTgBtn").onclick = () => {
+      localStorage.setItem("at_tg_tok", document.getElementById("tgTokenInp").value.trim());
+      localStorage.setItem("at_tg_chat", document.getElementById("tgChatInp").value.trim());
+      sendTgHtml("✅ <b>اتصال مستقیم داشبورد موبایل به تلگرام شما برقرار شد!</b>");
+    };
+
+    document.getElementById("tgTokenInp").value = localStorage.getItem("at_tg_tok") || "";
+    document.getElementById("tgChatInp").value = localStorage.getItem("at_tg_chat") || "";
+    document.getElementById("runBtn").onclick = runLiveAnalysis;
+    window.addEventListener("resize", drawChart);
+
+    runLiveAnalysis();
+  </script>
+</body>
+</html>

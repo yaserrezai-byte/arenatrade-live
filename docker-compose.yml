@@ -1,0 +1,12 @@
+services:
+  crypto-futures-agent:
+    build: .
+    container_name: crypto_futures_multi_agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
