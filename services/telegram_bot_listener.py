@@ -22,7 +22,7 @@ PERSISTENT_REPLY_KEYBOARD = {
         ],
         [
             {"text": "📡 اسکن تحلیلی واچ‌لیست"},
-            {"text": "📊 تحلیل XRP"},
+            {"text": "🛡 گزارش ایجنت ناظر"},
         ],
     ],
     "resize_keyboard": True,
@@ -42,6 +42,7 @@ MAIN_KEYBOARD = {
         ],
         [
             {"text": "📡 اسکن تحلیلی کل واچ‌لیست", "callback_data": "cmd:scan"},
+            {"text": "🛡 گزارش ایجنت ناظر", "callback_data": "cmd:watchdog"},
         ],
     ]
 }
@@ -214,6 +215,8 @@ class TelegramBotListener:
                 await self._reply_copy_status(chat_id)
             elif cb_data == "cmd:scan":
                 await self._reply_watchlist_scan(chat_id)
+            elif cb_data == "cmd:watchdog":
+                await self._reply_watchdog_audit(chat_id)
             return
 
         # 3. Text Messages / Commands in Private Chat or Group/Channel
@@ -269,6 +272,9 @@ class TelegramBotListener:
 
         elif low == "/scan" or text == "📡 اسکن تحلیلی واچ‌لیست":
             await self._reply_watchlist_scan(chat_id)
+
+        elif low in ("/watchdog", "/audit", "/status") or text in ("🛡 گزارش ایجنت ناظر", "ناظر", "وضعیت"):
+            await self._reply_watchdog_audit(chat_id)
 
         elif text in ("🧠 تحلیل BTC", "🧠 تحلیل ETH", "🧠 تحلیل SOL", "📊 تحلیل XRP"):
             coin = text.split()[-1].upper()
@@ -367,6 +373,18 @@ class TelegramBotListener:
             )
         await telegram_agent.send_html_message(
             "\n".join(lines), msg_type="SCAN_SUMMARY", override_chat_id=chat_id, reply_markup=MAIN_KEYBOARD
+        )
+
+    async def _reply_watchdog_audit(self, chat_id: str) -> None:
+        from agents.watchdog_agent import watchdog_agent
+
+        await watchdog_agent.run_audit_and_heal_once()
+        report_html = watchdog_agent.format_full_audit_report_html()
+        await telegram_agent.send_html_message(
+            report_html,
+            msg_type="WATCHDOG_AUDIT",
+            override_chat_id=chat_id,
+            reply_markup=MAIN_KEYBOARD,
         )
 
 
