@@ -82,6 +82,10 @@ class MarketScannerService:
             sr_str = ""
             if s1 and r1:
                 sr_str = f" | S1:<code>{_fmt_px(float(s1))}</code> R1:<code>{_fmt_px(float(r1))}</code>"
+            fib = sr.get("fibonacci") or {}
+            fib_str = ""
+            if fib.get("nearest_level") and fib.get("nearest_price"):
+                fib_str = f" | Fib {fib['nearest_level']}:<code>{_fmt_px(float(fib['nearest_price']))}</code>"
 
             comp = sig.get("previous_comparison") or {}
             delta_str = ""
@@ -111,7 +115,7 @@ class MarketScannerService:
             lines.append(
                 f"{ic} <b>#{sym}</b> | جهت: <code>{d}</code> | اطمینان الگوریتمی: <code>{conf:.0f}/100</code> | امتیاز: <code>{score:+.1f}</code>{act_badge}\n"
                 f"💵 قیمت: <code>{px} USDT</code> | جریان خالص ۱ساعته: <code>{flow_str}</code>\n"
-                f"📐 روند 4H: <b>{htf_fa}</b> | RSI-1h: <code>{rsi_str}</code> | {ma_stack}{sr_str}{delta_str}"
+                f"📐 روند 4H: <b>{htf_fa}</b> | RSI-1h: <code>{rsi_str}</code> | {ma_stack}{sr_str}{fib_str}{delta_str}"
             )
 
         lines.append("━━━━━━━━━━━━━━━━━━━━")
