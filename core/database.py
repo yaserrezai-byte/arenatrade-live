@@ -221,6 +221,31 @@ class Database:
             ).fetchone()
             return dict(row) if row else None
 
+    def get_pending_copy_signal(
+        self, trader_address: str, coin: str, direction: str, max_age_sec: int = 21600
+    ) -> Optional[Dict[str, Any]]:
+        """Return one undelivered signal for this exact whale position, preventing duplicate rows/messages."""
+        cutoff = int(time.time()) - max_age_sec
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT payload_json FROM signals
+                WHERE signal_source = 'COPY_TRADER'
+                  AND symbol = ? AND direction = ?
+                  AND telegram_sent = 0 AND created_at >= ?
+                ORDER BY created_at DESC LIMIT 20
+                """,
+                (coin.upper(), direction.upper(), cutoff),
+            ).fetchall()
+            for row in rows:
+                try:
+                    payload = json.loads(row["payload_json"])
+                    if payload.get("copied_trader_address") == trader_address:
+                        return payload
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+        return None
+
     def get_copy_signaled_positions_for_trader(self, trader_address: str) -> List[Dict[str, Any]]:
         with self._lock, self._connect() as conn:
             rows = conn.execute(
@@ -582,10 +607,25 @@ class Database:
                 """
                 SELECT payload_json FROM signals
                 WHERE signal_source = 'COPY_TRADER' AND actionable = 1 AND telegram_sent = 0 AND created_at >= ?
-                ORDER BY created_at DESC LIMIT 5
+                ORDER BY created_at DESC LIMIT 30
                 """,
-                (now - 1800,),
+                (now - 21600,),
             ).fetchall()
+            pending_unique = []
+            pending_keys = set()
+            for row in unsent_copy:
+                try:
+                    payload = json.loads(row["payload_json"])
+                    key = (
+                        payload.get("copied_trader_address"),
+                        payload.get("symbol"),
+                        payload.get("direction"),
+                    )
+                    if key not in pending_keys:
+                        pending_keys.add(key)
+                        pending_unique.append(payload)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
 
             return {
                 "now_ts": now,
@@ -598,7 +638,7 @@ class Database:
                 "tg_failed_6h": int(tg_stats["fail_cnt"] or 0),
                 "last_tg_delivered_ts": int(tg_stats["last_ok_ts"] or 0),
                 "auto_heals_24h": int(heal_cnt["c"] or 0),
-                "unsent_copy_signals": [json.loads(r["payload_json"]) for r in unsent_copy],
+                "unsent_copy_signals": pending_unique,
             }
 
 
