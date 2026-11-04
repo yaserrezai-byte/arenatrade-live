@@ -183,7 +183,8 @@ class TelegramNotifierAgent:
         r1_z = srt.get("r1_zone")
         asc_tl = srt.get("ascending_tl")
         desc_tl = srt.get("descending_tl")
-        if s1_z or r1_z or asc_tl or desc_tl:
+        fib = srt.get("fibonacci") or {}
+        if s1_z or r1_z or asc_tl or desc_tl or fib:
             lines.extend(["", "📐 <b>محدوده‌های حمایت/مقاومت و خطوط روند:</b>"])
             if s1_z:
                 lines.append(
@@ -200,6 +201,21 @@ class TelegramNotifierAgent:
             if asc_tl:
                 lines.append(
                     f"📈 <b>خط روند صعودی:</b> تراز <code>${_fmt_price(asc_tl['current_price_on_line'])}</code> — {asc_tl['status_fa']}"
+                )
+            if fib:
+                impulse_fa = "صعودی" if fib.get("impulse_direction") == "BULLISH" else "نزولی"
+                conf_map = {
+                    "BULLISH_CONFIRMED": "همگرایی صعودی تاییدشده ✅",
+                    "BEARISH_CONFIRMED": "همگرایی نزولی تاییدشده ✅",
+                    "TOUCH_UNCONFIRMED": "صرفاً تماس؛ بدون تایید ورود ⏳",
+                    "NONE": "دور از سطح کلیدی",
+                }
+                lines.extend(
+                    [
+                        f"🌀 <b>فیبوناچی موج {impulse_fa}:</b> نزدیک‌ترین سطح <code>{fib.get('nearest_level', '—')}</code> در <code>${_fmt_price(float(fib.get('nearest_price', 0)))}</code>",
+                        f"✨ <b>ناحیه طلایی 61.8–65%:</b> <code>${_fmt_price(float(fib.get('golden_pocket_low', 0)))}</code> تا <code>${_fmt_price(float(fib.get('golden_pocket_high', 0)))}</code> | {conf_map.get(fib.get('confluence'), 'بدون تایید')}",
+                        f"🎯 <b>اکستنشن‌های موج:</b> <code>1.272=${_fmt_price(float(fib.get('extension_1.272', 0)))}</code> | <code>1.618=${_fmt_price(float(fib.get('extension_1.618', 0)))}</code>",
+                    ]
                 )
 
         # Stateful Comparison vs Previous Analysis Section
