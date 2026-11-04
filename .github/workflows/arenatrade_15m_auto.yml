@@ -21,7 +21,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
 
       - name: Restore SQLite memory (15m Historical Comparison & Copy-Trader 2-Strike State)
         uses: actions/cache@v4
@@ -34,7 +33,7 @@ jobs:
       - name: Install dependencies
         run: |
           mkdir -p data
-          pip install --no-cache-dir -r requirements.txt
+          pip install --quiet -r requirements.txt
 
       - name: Run 15m Market Analysis + Smart Copy-Trader Pipelines
         env:
