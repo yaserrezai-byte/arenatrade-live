@@ -161,11 +161,13 @@ class MarketScannerService:
             self.last_scan_results = results
             self.last_scan_ts = int(time.time())
 
+            is_hourly_pulse = datetime.now(timezone.utc).minute < 15
             if (
                 results
                 and send_summary_to_telegram
                 and settings.get("TELEGRAM_AUTO_SEND", True)
                 and settings.get("SEND_SCAN_SUMMARY_REPORT", True)
+                and (bool(sent_symbols) or is_hourly_pulse)
             ):
                 from agents.telegram_agent import DEFAULT_SIGNAL_INLINE_KEYBOARD, telegram_agent
 
