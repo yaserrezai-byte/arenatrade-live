@@ -204,6 +204,25 @@ class Database:
             ).fetchone()
             return row is not None
 
+    def get_copy_signaled_position(self, pos_key: str) -> Optional[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM copy_signaled_positions WHERE pos_key = ?", (pos_key,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_copy_signaled_positions_for_trader(self, trader_address: str) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM copy_signaled_positions WHERE trader_address = ?", (trader_address,)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_copy_signaled_position(self, pos_key: str) -> None:
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM copy_signaled_positions WHERE pos_key = ?", (pos_key,))
+            conn.commit()
+
     def mark_copy_position_signaled(
         self, pos_key: str, trader_address: str, coin: str, direction: str, entry_price: float
     ) -> None:
