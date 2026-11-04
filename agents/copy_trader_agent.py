@@ -319,8 +319,10 @@ class CopyTraderAgent(BaseAgent):
                     )
 
                     if (not prev_rec or entry_shifted) and roe_pct <= 95.0:
-                        sig_dict = await self.build_copy_signal(refreshed_whale, pos)
-                        db.save_signal(sig_dict)
+                        pending = db.get_pending_copy_signal(addr, pos["coin"], pos["direction"])
+                        sig_dict = pending or await self.build_copy_signal(refreshed_whale, pos)
+                        if pending is None:
+                            db.save_signal(sig_dict)
                         if settings.get("TELEGRAM_AUTO_SEND", True):
                             tg_res = await telegram_agent.send_signal(sig_dict)
                             if tg_res.get("ok"):
@@ -370,14 +372,17 @@ class CopyTraderAgent(BaseAgent):
             sig_dict = await self.build_copy_signal(active, pos)
             db.save_signal(sig_dict)
             pos_key = f"{active['address']}:{pos['coin']}:{pos['direction']}"
-            db.mark_copy_position_signaled(
-                pos_key, active["address"], pos["coin"], pos["direction"], pos["entry_price"]
-            )
             if send_to_telegram:
                 last_tg_res = await telegram_agent.send_signal(sig_dict)
                 if last_tg_res.get("ok"):
                     sig_dict["telegram_sent"] = True
-            sent_signals.append(sig_dict)
+                    db.mark_copy_position_signaled(
+                        pos_key, active["address"], pos["coin"], pos["direction"], pos["entry_price"]
+                    )
+                    sent_signals.append(sig_dict)
+            else:
+                # A preview must never suppress the future automatic live delivery.
+                sent_signals.append(sig_dict)
 
         return {
             "ok": True,
