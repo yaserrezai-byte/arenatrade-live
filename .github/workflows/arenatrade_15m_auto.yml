@@ -5,6 +5,9 @@ on:
     - cron: "*/15 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: arenatrade-15m-scanner
   cancel-in-progress: false
@@ -43,3 +46,14 @@ jobs:
           SEND_SCAN_SUMMARY_REPORT: "true"
           AUTO_SCAN_INTERVAL_SEC: "900"
         run: python run_oneshot_scan.py
+
+      - name: Weekly keepalive to prevent GitHub 60-day cron pause
+        run: |
+          if [ "$(date -u +%u)" = "7" ] && [ "$(date -u +%H)" = "00" ] && [ "$(date -u +%M)" -lt "15" ]; then
+            date -u +"Active keepalive: %Y-%m-%d %H:%M UTC" > HEARTBEAT.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add HEARTBEAT.txt
+            git commit -m "chore: weekly cron keepalive" || true
+            git push || true
+          fi
