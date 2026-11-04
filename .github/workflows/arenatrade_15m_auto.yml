@@ -2,7 +2,7 @@ name: Arenatrade 15m Auto-Scanner & Copy-Trader
 
 on:
   schedule:
-    - cron: "2,17,32,47 * * * *"
+    - cron: "7 */2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -13,9 +13,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  scan-and-notify:
+  continuous-cloud-engine:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 185
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
           python-version: "3.11"
 
       - name: Restore SQLite memory (15m Historical Comparison & Copy-Trader 2-Strike State)
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: data/futures_intelligence.db
           key: arenatrade-db-${{ github.run_id }}
@@ -38,22 +38,46 @@ jobs:
           mkdir -p data
           pip install --quiet -r requirements.txt
 
-      - name: Run 15m Market Analysis + Smart Copy-Trader Pipelines
+      - name: Run Continuous 2h45m Exact-15m Scanner + 90s Copy-Trader + Live Telegram Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_AUTO_SEND: "true"
           SEND_SCAN_SUMMARY_REPORT: "true"
           AUTO_SCAN_INTERVAL_SEC: "900"
-        run: python run_oneshot_scan.py
+          SCAN_SYNC_CANDLE_CLOSE: "true"
+          COPY_MONITOR_INTERVAL_SEC: "90"
+          DAEMON_DURATION_SEC: "9900"
+        run: python run_cloud_daemon.py
 
-      - name: Weekly keepalive to prevent GitHub 60-day cron pause
+      - name: Save SQLite memory atomically before cycle handoff
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/futures_intelligence.db
+          key: arenatrade-db-${{ github.run_id }}
+
+      - name: Weekly keepalive to prevent GitHub 60-day inactivity pause
+        if: always()
         run: |
-          if [ "$(date -u +%u)" = "7" ] && [ "$(date -u +%H)" = "00" ] && [ "$(date -u +%M)" -lt "15" ]; then
+          if [ "$(date -u +%u)" = "7" ] && [ "$(date -u +%H)" -lt "03" ]; then
             date -u +"Active keepalive: %Y-%m-%d %H:%M UTC" > HEARTBEAT.txt
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add HEARTBEAT.txt
             git commit -m "chore: weekly cron keepalive" || true
             git push || true
+          fi
+
+      - name: Seamlessly relay next 2h45m cloud cycle (zero-gap 24/7 execution)
+        if: always()
+        env:
+          GH_PAT: ${{ secrets.GH_WORKFLOW_TOKEN }}
+        run: |
+          if [ -n "$GH_PAT" ]; then
+            curl -sS -X POST \
+              -H "Authorization: Bearer $GH_PAT" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/arenatrade_15m_auto.yml/dispatches" \
+              -d '{"ref":"main"}' || true
           fi
