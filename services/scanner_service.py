@@ -90,14 +90,28 @@ class MarketScannerService:
                 ds = float(sig["composite_score"]) - float(comp.get("previous_score", 0.0))
                 delta_str = f" | Δقیمت:<code>{dp:+.2f}%</code> Δامتیاز:<code>{ds:+.1f}</code>"
 
-            act_badge = " 🎯<b>[سیگنال مستقل ارسال شد]</b>" if sym in sent_symbols else (
-                " ✅[معتبر]" if sig.get("actionable") else ""
-            )
+            delivery_state = sig.get("scan_delivery_state")
+            vetoes = comp.get("safety_veto_reasons") or []
+            if sym in sent_symbols or delivery_state == "SENT":
+                act_badge = " 🎯<b>[سیگنال جدید ارسال شد]</b>"
+            elif delivery_state == "VALID_BUT_COOLDOWN":
+                act_badge = " ✅<b>[معتبر؛ مشابه اخیر قبلاً ارسال شده]</b>"
+            elif delivery_state == "DELIVERY_FAILED":
+                act_badge = " ⚠️<b>[خطای تحویل؛ در صف ارسال مجدد]</b>"
+            elif sig.get("direction") == "NEUTRAL":
+                act_badge = " ⚪<b>[خنثی؛ بدون ورود]</b>"
+            elif vetoes:
+                act_badge = " ⛔<b>[ردشده توسط فیلتر ریسک/روند 4H]</b>"
+            else:
+                act_badge = " 👀<b>[تحت‌نظر؛ هنوز ورود ندارد]</b>"
+
+            htf_map = {"BULLISH": "صعودی 🟢", "BEARISH": "نزولی 🔴", "NEUTRAL": "خنثی ⚪"}
+            htf_fa = htf_map.get(str(comp.get("htf_4h_regime", "NEUTRAL")), "نامشخص")
 
             lines.append(
                 f"{ic} <b>#{sym}</b> | جهت: <code>{d}</code> | اطمینان الگوریتمی: <code>{conf:.0f}/100</code> | امتیاز: <code>{score:+.1f}</code>{act_badge}\n"
                 f"💵 قیمت: <code>{px} USDT</code> | جریان خالص ۱ساعته: <code>{flow_str}</code>\n"
-                f"📐 RSI-1h: <code>{rsi_str}</code> | {ma_stack}{sr_str}{delta_str}"
+                f"📐 روند 4H: <b>{htf_fa}</b> | RSI-1h: <code>{rsi_str}</code> | {ma_stack}{sr_str}{delta_str}"
             )
 
         lines.append("━━━━━━━━━━━━━━━━━━━━")
@@ -155,17 +169,24 @@ class MarketScannerService:
                         else 999.0
                     )
                     cooldown_passed = (not prev) or ((now - prev["ts"]) > 2600) or (px_shift_pct >= 0.7)
+                    sig["scan_delivery_state"] = "NOT_ACTIONABLE"
 
-                    if sig["actionable"] and settings.get("TELEGRAM_AUTO_SEND", True) and cooldown_passed:
-                        from agents.telegram_agent import telegram_agent
+                    if sig["actionable"] and settings.get("TELEGRAM_AUTO_SEND", True):
+                        if not cooldown_passed:
+                            sig["scan_delivery_state"] = "VALID_BUT_COOLDOWN"
+                        else:
+                            from agents.telegram_agent import telegram_agent
 
-                        tg = await telegram_agent.send_signal(sig)
-                        res["telegram_result"] = tg
-                        if tg.get("ok"):
-                            sig["telegram_sent"] = True
-                            db.mark_signal_telegram_sent(sig["signal_id"])
-                            sent_symbols.append(sig["symbol"])
-                            self._last_sent_info[key] = {"ts": now, "price": cur_px}
+                            tg = await telegram_agent.send_signal(sig)
+                            res["telegram_result"] = tg
+                            if tg.get("ok"):
+                                sig["telegram_sent"] = True
+                                sig["scan_delivery_state"] = "SENT"
+                                db.mark_signal_telegram_sent(sig["signal_id"])
+                                sent_symbols.append(sig["symbol"])
+                                self._last_sent_info[key] = {"ts": now, "price": cur_px}
+                            else:
+                                sig["scan_delivery_state"] = "DELIVERY_FAILED"
                     return res
                 except Exception:
                     return None
