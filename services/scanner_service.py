@@ -99,6 +99,12 @@ class MarketScannerService:
             lines.append(f"✅ سیگنال‌های کامل ورود و حد ضرر برای: <b>{', '.join('#' + s for s in sent_symbols)}</b> جداگانه ارسال شد.")
         else:
             lines.append("ℹ️ در این کندل ۱۵ دقیقه‌ای سیگنال ورود کم‌ریسک جدیدی خارج از کول‌داون فعال نشد (بازار تحت رصد مستمر است).")
+        try:
+            from agents.watchdog_agent import watchdog_agent
+
+            lines.extend(["", watchdog_agent.get_audit_stamp_fa()])
+        except Exception:
+            pass
         return "\n".join(lines)
 
     async def scan_watchlist_once(
