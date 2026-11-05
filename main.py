@@ -13,6 +13,7 @@ from core.database import db
 from core.llm_router import llm_router
 from data_sources.market_data import market_hub
 from services.scanner_service import scanner_service
+from services.signal_validation_service import signal_validation_service
 from services.telegram_bot_listener import telegram_bot_listener, MAIN_KEYBOARD
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -308,9 +309,11 @@ async def _init_and_start() -> None:
     await scanner_service.initialize()
     scanner_service.start_background_loops()
     telegram_bot_listener.start()
+    signal_validation_service.start()
 
 
 async def on_cleanup(app: web.Application) -> None:
+    await signal_validation_service.stop()
     await telegram_bot_listener.stop()
     await scanner_service.stop_background_loops()
 
