@@ -40,6 +40,9 @@ jobs:
           mkdir -p data
           pip install --quiet -r requirements.txt
 
+      - name: Run safety and validation tests before starting live cycle
+        run: python -m pytest -q
+
       - name: Run Continuous 2h45m Exact-15m Scanner + 90s Copy-Trader + Live Telegram Bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -50,6 +53,9 @@ jobs:
           SCAN_SYNC_CANDLE_CLOSE: "true"
           MIN_RISK_REWARD_RATIO: "2.0"
           ESTIMATED_ROUND_TRIP_COST_PCT: "0.18"
+          STRATEGY_VERSION: "MA_V1_FROZEN_2026_11_05"
+          VALIDATION_ENTRY_WINDOW_BARS: "8"
+          VALIDATION_MAX_HOLD_BARS: "96"
           COPY_MONITOR_INTERVAL_SEC: "90"
           DAEMON_DURATION_SEC: "9900"
         run: python run_cloud_daemon.py
