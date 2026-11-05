@@ -51,6 +51,8 @@ class FuturesSignal(BaseModel):
     previous_comparison: Dict[str, Any] = Field(default_factory=dict)
     agent_reports: List[AgentReport] = Field(default_factory=list)
     telegram_sent: bool = False
+    strategy_version: str = "UNVERSIONED"
+    research_snapshot: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_trade_geometry(self) -> "FuturesSignal":
