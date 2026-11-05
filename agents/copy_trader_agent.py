@@ -163,6 +163,12 @@ class CopyTraderAgent(BaseAgent):
             },
             agent_reports=[],
             telegram_sent=False,
+            strategy_version="COPY_V1_FROZEN_2026_11_05",
+            research_snapshot={
+                "whale_address": trader["address"],
+                "whale_win_rate_sample_pct": win_rate,
+                "consecutive_losses": consec,
+            },
         )
         return sig_obj.model_dump()
 
