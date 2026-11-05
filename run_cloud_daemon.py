@@ -16,6 +16,7 @@ import time
 from agents.watchdog_agent import watchdog_agent
 from core.config import settings
 from services.scanner_service import scanner_service
+from services.signal_validation_service import signal_validation_service
 from services.telegram_bot_listener import telegram_bot_listener
 
 
@@ -35,6 +36,7 @@ async def main() -> None:
     await scanner_service.initialize()
     scanner_service.start_background_loops()
     telegram_bot_listener.start()
+    signal_validation_service.start()
     watchdog_agent.start_supervisor()
 
     try:
@@ -54,6 +56,7 @@ async def main() -> None:
             flush=True,
         )
         await watchdog_agent.stop_supervisor()
+        await signal_validation_service.stop()
         await telegram_bot_listener.stop()
         await scanner_service.stop_background_loops()
         await asyncio.sleep(1.0)
