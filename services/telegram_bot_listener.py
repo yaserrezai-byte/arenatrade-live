@@ -22,7 +22,7 @@ PERSISTENT_REPLY_KEYBOARD = {
         ],
         [
             {"text": "📡 اسکن تحلیلی واچ‌لیست"},
-            {"text": "🛡 گزارش ایجنت ناظر"},
+            {"text": "🧪 صحت‌سنجی عملکرد"},
         ],
     ],
     "resize_keyboard": True,
@@ -42,7 +42,10 @@ MAIN_KEYBOARD = {
         ],
         [
             {"text": "📡 اسکن تحلیلی کل واچ‌لیست", "callback_data": "cmd:scan"},
+        ],
+        [
             {"text": "🛡 گزارش ایجنت ناظر", "callback_data": "cmd:watchdog"},
+            {"text": "🧪 صحت‌سنجی عملکرد", "callback_data": "cmd:validation"},
         ],
     ]
 }
@@ -217,6 +220,8 @@ class TelegramBotListener:
                 await self._reply_watchlist_scan(chat_id)
             elif cb_data == "cmd:watchdog":
                 await self._reply_watchdog_audit(chat_id)
+            elif cb_data == "cmd:validation":
+                await self._reply_validation_report(chat_id)
             return
 
         # 3. Text Messages / Commands in Private Chat or Group/Channel
@@ -275,6 +280,9 @@ class TelegramBotListener:
 
         elif low in ("/watchdog", "/audit", "/status") or text in ("🛡 گزارش ایجنت ناظر", "ناظر", "وضعیت"):
             await self._reply_watchdog_audit(chat_id)
+
+        elif low in ("/validation", "/performance") or text == "🧪 صحت‌سنجی عملکرد":
+            await self._reply_validation_report(chat_id)
 
         elif text in ("🧠 تحلیل BTC", "🧠 تحلیل ETH", "🧠 تحلیل SOL", "📊 تحلیل XRP"):
             coin = text.split()[-1].upper()
@@ -383,6 +391,45 @@ class TelegramBotListener:
         await telegram_agent.send_html_message(
             report_html,
             msg_type="WATCHDOG_AUDIT",
+            override_chat_id=chat_id,
+            reply_markup=MAIN_KEYBOARD,
+        )
+
+    async def _reply_validation_report(self, chat_id: str) -> None:
+        from services.signal_validation_service import signal_validation_service
+
+        await signal_validation_service.evaluate_all_once()
+        version = str(settings.get("STRATEGY_VERSION", "MA_V1_FROZEN_2026_11_05"))
+        st = db.get_validation_stats(version)
+        closed = int(st["closed"])
+        if closed < 30:
+            verdict = f"⏳ نمونه هنوز ناکافی است: <code>{closed}/30</code> نتیجه بسته‌شده. هیچ ادعای سودآوری صادر نمی‌شود."
+        else:
+            exp = float(st.get("expectancy_r") or 0.0)
+            verdict = "🟢 امید ریاضی اولیه مثبت است؛ هنوز نیازمند Walk-forward است." if exp > 0 else "🔴 امید ریاضی فعلی مثبت نیست؛ نسخه نباید ارتقا یابد."
+
+        def fmt(v: Any, suffix: str = "") -> str:
+            return "—" if v is None else f"{v}{suffix}"
+
+        msg = "\n".join(
+            [
+                "🧪 <b>گزارش مستقل صحت‌سنجی عملکرد</b>",
+                "━━━━━━━━━━━━━━━━━━━━",
+                f"نسخه فریز‌شده: <code>{version}</code>",
+                f"ثبت‌شده: <code>{st['total_registered']}</code> | منتظر ورود: <code>{st['pending_entry']}</code> | باز: <code>{st['open']}</code>",
+                f"بسته‌شده: <code>{closed}</code> | بدون ورود: <code>{st['no_entry']}</code>",
+                f"برد خالص: <code>{st['wins']}</code> | استاپ: <code>{st['stops']}</code>",
+                f"Win rate: <code>{fmt(st['win_rate_pct'], '%')}</code> | Stop rate: <code>{fmt(st['stop_rate_pct'], '%')}</code>",
+                f"Expectancy: <code>{fmt(st['expectancy_r'], 'R')}</code> | میانگین MAE/MFE: <code>{fmt(st['avg_mae_r'], 'R')} / {fmt(st['avg_mfe_r'], 'R')}</code>",
+                f"بیشترین زیان متوالی: <code>{st['max_consecutive_losses']}</code> | کندل مبهم: <code>{st['ambiguous_bars']}</code>",
+                "",
+                verdict,
+                "ℹ️ سیاست محاسبه: اجرای T+1 روی کندل بسته ۱۵دقیقه‌ای؛ در برخورد هم‌زمان TP/SL، استاپ مقدم است؛ هزینه تقریبی نیز کسر می‌شود.",
+            ]
+        )
+        await telegram_agent.send_html_message(
+            msg,
+            msg_type="VALIDATION_REPORT",
             override_chat_id=chat_id,
             reply_markup=MAIN_KEYBOARD,
         )
