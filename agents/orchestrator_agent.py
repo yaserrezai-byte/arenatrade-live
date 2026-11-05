@@ -390,6 +390,20 @@ class OrchestratorAgent:
             },
             agent_reports=reports,
             telegram_sent=False,
+            strategy_version=str(settings.get("STRATEGY_VERSION", "MA_V1_FROZEN_2026_11_05")),
+            research_snapshot={
+                "htf_4h_regime": htf_regime,
+                "htf_aligned": (
+                    (direction == "LONG" and htf_bullish)
+                    or (direction == "SHORT" and htf_bearish)
+                ),
+                "fib_confluence": (sr_m.get("fibonacci") or {}).get("confluence", "NONE"),
+                "structural_rr_pass": structural_tp2_available and rr_tp2 >= min_rr,
+                "confidence_pass": confidence >= min_conf,
+                "chase_filter_pass": live_deviation_atr <= 0.90,
+                "veto_count": len(veto_reasons),
+                "actionable": actionable,
+            },
         )
 
         sig_dict = sig_obj.model_dump()
