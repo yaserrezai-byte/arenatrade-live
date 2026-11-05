@@ -12,6 +12,7 @@ from core.database import Database
 from core.models import FuturesSignal
 from data_sources.market_data import MarketDataHub
 from services.scanner_service import MarketScannerService
+from services.signal_validation_service import SignalValidationService
 
 
 def valid_signal(**updates):
@@ -145,6 +146,73 @@ class FibonacciTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fib["impulse_direction"], "BEARISH")
         self.assertLess(fib["levels"]["23.6%"], fib["levels"]["78.6%"])
         self.assertLess(fib["extension_1.618"], fib["swing_low"])
+
+
+class ForwardValidationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_same_bar_tp_and_sl_is_scored_as_stop(self):
+        with tempfile.TemporaryDirectory() as td:
+            test_db = Database(db_path=Path(td) / "validation.db")
+            sig = valid_signal(
+                signal_id="VAL-1",
+                strategy_version="TEST_V1",
+                research_snapshot={"htf_aligned": True},
+                entry_low=99.0,
+                entry_high=100.0,
+                stop_loss=95.0,
+                tp1=104.0,
+                tp2=110.0,
+                tp3=115.0,
+            )
+            test_db.save_signal(sig)
+            row = test_db.list_open_signal_outcomes()[0]
+            first_ms = SignalValidationService._first_evaluation_bar_ms(row["signal_created_at"])
+            candles = []
+            for i in range(12):
+                candles.append({
+                    "timestamp": first_ms + i * 900_000,
+                    "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0,
+                    "volume": 1.0, "quote_volume": 100.0,
+                })
+            candles[0].update({"high": 111.0, "low": 94.0})
+            frame = pd.DataFrame(candles)
+            service = SignalValidationService()
+            with patch("services.signal_validation_service.db", test_db), patch(
+                "services.signal_validation_service.market_hub.fetch_ohlcv",
+                new=AsyncMock(return_value=frame),
+            ):
+                result = await service.evaluate_one(row)
+            self.assertEqual(result["result"], "SL")
+            saved = test_db.get_validation_stats("TEST_V1")
+            self.assertEqual(saved["stops"], 1)
+            self.assertEqual(saved["ambiguous_bars"], 1)
+            self.assertLess(saved["expectancy_r"], -1.0)
+
+    async def test_untouched_entry_expires_as_no_entry(self):
+        with tempfile.TemporaryDirectory() as td:
+            test_db = Database(db_path=Path(td) / "validation.db")
+            sig = valid_signal(
+                signal_id="VAL-2", strategy_version="TEST_V1",
+                entry_low=99.0, entry_high=100.0,
+            )
+            test_db.save_signal(sig)
+            row = test_db.list_open_signal_outcomes()[0]
+            first_ms = SignalValidationService._first_evaluation_bar_ms(row["signal_created_at"])
+            frame = pd.DataFrame([
+                {
+                    "timestamp": first_ms + i * 900_000,
+                    "open": 105.0, "high": 106.0, "low": 104.0, "close": 105.0,
+                    "volume": 1.0, "quote_volume": 100.0,
+                }
+                for i in range(12)
+            ])
+            service = SignalValidationService()
+            with patch("services.signal_validation_service.db", test_db), patch(
+                "services.signal_validation_service.market_hub.fetch_ohlcv",
+                new=AsyncMock(return_value=frame),
+            ), patch("services.signal_validation_service.settings.get", side_effect=lambda k, d=None: 8 if k == "VALIDATION_ENTRY_WINDOW_BARS" else d):
+                result = await service.evaluate_one(row)
+            self.assertEqual(result["status"], "NO_ENTRY")
+            self.assertEqual(test_db.get_validation_stats("TEST_V1")["no_entry"], 1)
 
 
 class PendingDeliveryTests(unittest.TestCase):
