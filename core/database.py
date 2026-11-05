@@ -111,11 +111,41 @@ class Database:
                     auto_healed INTEGER NOT NULL DEFAULT 0,
                     summary_fa TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS signal_outcomes (
+                    signal_id TEXT PRIMARY KEY,
+                    strategy_version TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    direction TEXT NOT NULL,
+                    signal_created_at INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    entry_price REAL,
+                    entry_at INTEGER,
+                    exit_price REAL,
+                    exit_at INTEGER,
+                    result TEXT,
+                    gross_r REAL,
+                    net_r REAL,
+                    mae_r REAL DEFAULT 0,
+                    mfe_r REAL DEFAULT 0,
+                    bars_observed INTEGER DEFAULT 0,
+                    ambiguous_bar INTEGER DEFAULT 0,
+                    estimated_cost_pct REAL DEFAULT 0,
+                    updated_at INTEGER NOT NULL,
+                    snapshot_json TEXT NOT NULL DEFAULT '{}',
+                    details_json TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_signal_outcomes_status
+                    ON signal_outcomes(status, signal_created_at);
+                CREATE INDEX IF NOT EXISTS idx_signal_outcomes_version
+                    ON signal_outcomes(strategy_version, status);
                 """
             )
             conn.commit()
 
     def save_signal(self, signal_dict: Dict[str, Any]) -> None:
+        now_ts = int(time.time())
         with self._lock, self._connect() as conn:
             conn.execute(
                 """
@@ -128,7 +158,7 @@ class Database:
                 """,
                 (
                     signal_dict["signal_id"],
-                    int(time.time()),
+                    now_ts,
                     signal_dict["timestamp_iso"],
                     signal_dict["symbol"],
                     signal_dict["timeframe"],
@@ -147,6 +177,42 @@ class Database:
                     json.dumps(signal_dict, ensure_ascii=False),
                 ),
             )
+            if (
+                signal_dict.get("signal_source") == "MARKET_ANALYSIS"
+                and signal_dict.get("direction") in ("LONG", "SHORT")
+            ):
+                snapshot = dict(signal_dict.get("research_snapshot") or {})
+                snapshot.update(
+                    {
+                        "actionable_at_creation": bool(signal_dict.get("actionable")),
+                        "confidence": float(signal_dict.get("confidence", 0.0)),
+                        "composite_score": float(signal_dict.get("composite_score", 0.0)),
+                        "risk_reward_tp2": float(signal_dict.get("risk_reward_tp2", 0.0)),
+                    }
+                )
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO signal_outcomes (
+                        signal_id, strategy_version, symbol, direction,
+                        signal_created_at, status, estimated_cost_pct,
+                        updated_at, snapshot_json, details_json
+                    ) VALUES (?, ?, ?, ?, ?, 'PENDING_ENTRY', ?, ?, ?, '{}')
+                    """,
+                    (
+                        signal_dict["signal_id"],
+                        str(signal_dict.get("strategy_version") or "UNVERSIONED"),
+                        signal_dict["symbol"],
+                        signal_dict["direction"],
+                        now_ts,
+                        float(
+                            (signal_dict.get("previous_comparison") or {}).get(
+                                "estimated_round_trip_cost_pct", 0.18
+                            )
+                        ),
+                        now_ts,
+                        json.dumps(snapshot, ensure_ascii=False),
+                    ),
+                )
             conn.commit()
 
     def mark_signal_telegram_sent(self, signal_id: str) -> None:
@@ -560,6 +626,117 @@ class Database:
                 (limit,),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def list_open_signal_outcomes(self, limit: int = 250) -> List[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT o.*, s.payload_json
+                FROM signal_outcomes o
+                JOIN signals s ON s.signal_id = o.signal_id
+                WHERE o.status IN ('PENDING_ENTRY', 'OPEN')
+                ORDER BY o.signal_created_at ASC LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+            out = []
+            for row in rows:
+                item = dict(row)
+                item["signal"] = json.loads(item.pop("payload_json"))
+                item["snapshot"] = json.loads(item.get("snapshot_json") or "{}")
+                item["details"] = json.loads(item.get("details_json") or "{}")
+                out.append(item)
+            return out
+
+    def update_signal_outcome(self, signal_id: str, **fields: Any) -> None:
+        allowed = {
+            "status", "entry_price", "entry_at", "exit_price", "exit_at", "result",
+            "gross_r", "net_r", "mae_r", "mfe_r", "bars_observed",
+            "ambiguous_bar", "details_json",
+        }
+        clean = {k: v for k, v in fields.items() if k in allowed}
+        if not clean:
+            return
+        if isinstance(clean.get("details_json"), dict):
+            clean["details_json"] = json.dumps(clean["details_json"], ensure_ascii=False)
+        clean["updated_at"] = int(time.time())
+        set_sql = ", ".join(f"{k} = ?" for k in clean)
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                f"UPDATE signal_outcomes SET {set_sql} WHERE signal_id = ?",
+                (*clean.values(), signal_id),
+            )
+            conn.commit()
+
+    def get_validation_stats(self, strategy_version: Optional[str] = None) -> Dict[str, Any]:
+        with self._lock, self._connect() as conn:
+            if strategy_version:
+                rows = conn.execute(
+                    "SELECT * FROM signal_outcomes WHERE strategy_version = ? ORDER BY signal_created_at",
+                    (strategy_version,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM signal_outcomes ORDER BY signal_created_at"
+                ).fetchall()
+
+        data = [dict(r) for r in rows]
+        closed = [r for r in data if r["status"] in ("CLOSED", "TIMEOUT")]
+        entered = [r for r in data if r["status"] in ("OPEN", "CLOSED", "TIMEOUT")]
+        no_entry = [r for r in data if r["status"] == "NO_ENTRY"]
+        wins = [r for r in closed if float(r.get("net_r") or 0.0) > 0]
+        stops = [r for r in closed if r.get("result") == "SL"]
+        net_rs = [float(r.get("net_r") or 0.0) for r in closed]
+
+        streak = max_streak = 0
+        for row in closed:
+            if float(row.get("net_r") or 0.0) <= 0:
+                streak += 1
+                max_streak = max(max_streak, streak)
+            else:
+                streak = 0
+
+        by_filter: Dict[str, Dict[str, Any]] = {}
+        predicates = {
+            "actionable_at_creation": lambda s: bool(s.get("actionable_at_creation")),
+            "htf_aligned": lambda s: bool(s.get("htf_aligned")),
+            "structural_rr_pass": lambda s: bool(s.get("structural_rr_pass")),
+            "chase_filter_pass": lambda s: bool(s.get("chase_filter_pass")),
+            "fib_confirmed": lambda s: s.get("fib_confluence") in ("BULLISH_CONFIRMED", "BEARISH_CONFIRMED"),
+        }
+        for filter_name, predicate in predicates.items():
+            subset = []
+            for row in closed:
+                snap = json.loads(row.get("snapshot_json") or "{}")
+                if predicate(snap):
+                    subset.append(float(row.get("net_r") or 0.0))
+            by_filter[filter_name] = {
+                "n": len(subset),
+                "expectancy_r": round(sum(subset) / len(subset), 3) if subset else None,
+                "win_rate_pct": round(sum(1 for x in subset if x > 0) / len(subset) * 100.0, 1) if subset else None,
+            }
+
+        versions = sorted({str(r["strategy_version"]) for r in data})
+        return {
+            "strategy_version": strategy_version,
+            "versions": versions,
+            "total_registered": len(data),
+            "pending_entry": sum(1 for r in data if r["status"] == "PENDING_ENTRY"),
+            "open": sum(1 for r in data if r["status"] == "OPEN"),
+            "no_entry": len(no_entry),
+            "closed": len(closed),
+            "entered": len(entered),
+            "wins": len(wins),
+            "stops": len(stops),
+            "win_rate_pct": round(len(wins) / len(closed) * 100.0, 1) if closed else None,
+            "stop_rate_pct": round(len(stops) / len(closed) * 100.0, 1) if closed else None,
+            "expectancy_r": round(sum(net_rs) / len(net_rs), 3) if net_rs else None,
+            "avg_mae_r": round(sum(float(r.get("mae_r") or 0.0) for r in closed) / len(closed), 3) if closed else None,
+            "avg_mfe_r": round(sum(float(r.get("mfe_r") or 0.0) for r in closed) / len(closed), 3) if closed else None,
+            "max_consecutive_losses": max_streak,
+            "ambiguous_bars": sum(int(r.get("ambiguous_bar") or 0) for r in closed),
+            "by_filter": by_filter,
+        }
 
     def get_watchdog_audit_stats(self) -> Dict[str, Any]:
         now = int(time.time())
