@@ -48,7 +48,8 @@ class MarketScannerService:
         ts_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         expected = len(settings.watchlist)
         lines = [
-            "⏱📡 <b>گزارش اسکن خودکار ۱۵ دقیقه‌ای بازار فیوچرز (۸ ایجنت تحلیل)</b>",
+            "📋 <b>این پیام فقط خلاصه بازار است؛ سیگنال ورود نیست</b>",
+            "⏱📡 <b>گزارش اسکن خودکار ۱۵ دقیقه‌ای بازار فیوچرز</b>",
             f"🕒 زمان اسکن: <code>{ts_str}</code> | پوشش: <code>{len(results)}/{expected} ارز</code>",
             "━━━━━━━━━━━━━━━━━━━━",
         ]
