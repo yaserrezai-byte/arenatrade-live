@@ -74,7 +74,8 @@ class TelegramNotifierAgent:
         max_l = int(meta.get("max_allowed_losses", 2))
 
         lines = [
-            f"{header_icon} <b>سیگنال مستقل کپی‌تریدر | #{sig['symbol']}USDT</b>",
+            "🐋🚨🚨 <b>سیگنال کپی‌تریدر قابل اجرا</b> 🚨🚨🐋",
+            f"{header_icon} <b>#{sig['symbol']}USDT | {dir_fa}</b>",
             "━━━━━━━━━━━━━━━━━━━━",
             "📡 <b>بخش:</b> <code>کپی مستقیم از تریدر موفق (مستقل از تحلیل تکنیکال)</code>",
             f"👤 <b>تریدر مرجع فعال:</b> <code>{whale_name}</code> (<code>{short_addr}</code>)",
@@ -120,13 +121,17 @@ class TelegramNotifierAgent:
             header_icon = "🧠⚪️"
             dir_fa = "NEUTRAL (عدم ورود / رصد بازار)"
 
+        decision_banner = (
+            "🚨🚨 <b>سیگنال ورود قابل اجرا</b> 🚨🚨"
+            if sig.get("actionable")
+            else "👀 <b>فقط تحلیل تحت‌نظر — سیگنال ورود نیست</b>"
+        )
         lines = [
-            f"{header_icon} <b>سیگنال مستقل تحلیل بازار فیوچرز | #{sig['symbol']}USDT</b>",
+            decision_banner,
+            f"{header_icon} <b>#{sig['symbol']}USDT | {dir_fa}</b>",
             "━━━━━━━━━━━━━━━━━━━━",
-            "📡 <b>بخش:</b> <code>تحلیل خالص ۸ ایجنت تخصصی بازار (مستقل از کپی‌تریدر)</code>",
-            f"📌 <b>جهت پوزیشن:</b> <code>{dir_fa}</code>",
-            f"⏱ <b>تایم‌فریم مرجع:</b> <code>{sig['timeframe']}</code> (اسکن ۱۵ دقیقه‌ای)",
-            f"🎯 <b>امتیاز اطمینان الگوریتمی (هنوز کالیبره‌نشده به احتمال برد):</b> <code>{sig['confidence']:.1f}/100</code> (برآیند: <code>{sig['composite_score']:+.1f}</code>)",
+            f"⭐ <b>امتیاز کیفیت ستاپ:</b> <code>{sig['confidence']:.1f}/100</code>",
+            f"⏱ <b>تایم‌فریم مرجع:</b> <code>{sig['timeframe']}</code> | بررسی خودکار هر ۱۵ دقیقه",
         ]
 
         lines.extend(
