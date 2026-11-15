@@ -114,6 +114,7 @@ class Database:
 
                 CREATE TABLE IF NOT EXISTS signal_outcomes (
                     signal_id TEXT PRIMARY KEY,
+                    event_key TEXT UNIQUE,
                     strategy_version TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     direction TEXT NOT NULL,
@@ -141,6 +142,16 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_signal_outcomes_version
                     ON signal_outcomes(strategy_version, status);
                 """
+            )
+            # Backward-compatible migration for databases created before event-level
+            # de-duplication. NULL legacy keys remain valid; new V2 events are unique.
+            outcome_cols = {
+                row[1] for row in conn.execute("PRAGMA table_info(signal_outcomes)").fetchall()
+            }
+            if "event_key" not in outcome_cols:
+                conn.execute("ALTER TABLE signal_outcomes ADD COLUMN event_key TEXT")
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_signal_outcomes_event_key ON signal_outcomes(event_key)"
             )
             conn.commit()
 
@@ -190,17 +201,25 @@ class Database:
                         "risk_reward_tp2": float(signal_dict.get("risk_reward_tp2", 0.0)),
                     }
                 )
+                strategy_version = str(signal_dict.get("strategy_version") or "UNVERSIONED")
+                primary_ts = snapshot.get("primary_candle_timestamp_ms")
+                event_key = (
+                    f"{strategy_version}:{signal_dict['symbol']}:{signal_dict['direction']}:{primary_ts}"
+                    if primary_ts is not None
+                    else f"{strategy_version}:{signal_dict['signal_id']}"
+                )
                 conn.execute(
                     """
                     INSERT OR IGNORE INTO signal_outcomes (
-                        signal_id, strategy_version, symbol, direction,
+                        signal_id, event_key, strategy_version, symbol, direction,
                         signal_created_at, status, estimated_cost_pct,
                         updated_at, snapshot_json, details_json
-                    ) VALUES (?, ?, ?, ?, ?, 'PENDING_ENTRY', ?, ?, ?, '{}')
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING_ENTRY', ?, ?, ?, '{}')
                     """,
                     (
                         signal_dict["signal_id"],
-                        str(signal_dict.get("strategy_version") or "UNVERSIONED"),
+                        event_key,
+                        strategy_version,
                         signal_dict["symbol"],
                         signal_dict["direction"],
                         now_ts,
@@ -227,6 +246,15 @@ class Database:
                     "UPDATE signals SET telegram_sent = 1, payload_json = ? WHERE signal_id = ?",
                     (json.dumps(data, ensure_ascii=False), signal_id),
                 )
+                snapshot = data.get("research_snapshot") or {}
+                primary_ts = snapshot.get("primary_candle_timestamp_ms")
+                version = data.get("strategy_version")
+                if primary_ts is not None and version:
+                    event_key = f"{version}:{data.get('symbol')}:{data.get('direction')}:{primary_ts}"
+                    conn.execute(
+                        "UPDATE signal_outcomes SET signal_id = ? WHERE event_key = ?",
+                        (signal_id, event_key),
+                    )
                 conn.commit()
 
     def get_last_sent_market_signal(
@@ -248,6 +276,28 @@ class Database:
                 (symbol.upper(), direction.upper(), exclude_signal_id),
             ).fetchone()
             return dict(row) if row else None
+
+    def has_active_sent_market_signal(self, symbol: str, strategy_version: str) -> bool:
+        """True while a delivered signal for this symbol is pending entry or open.
+
+        This enforces one live thesis per instrument and prevents the 45-minute alert
+        stacking found in the two-week audit.
+        """
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT 1
+                FROM signal_outcomes o
+                JOIN signals s ON s.signal_id = o.signal_id
+                WHERE o.symbol = ?
+                  AND o.strategy_version = ?
+                  AND o.status IN ('PENDING_ENTRY', 'OPEN')
+                  AND s.telegram_sent = 1
+                LIMIT 1
+                """,
+                (symbol.upper(), strategy_version),
+            ).fetchone()
+            return row is not None
 
     def list_signals(
         self,
@@ -378,6 +428,7 @@ class Database:
             extra = {
                 "open_positions": trader.get("open_positions", []),
                 "recent_closed_trades": trader.get("recent_closed_trades", []),
+                "last_close_time_ms": int(trader.get("last_close_time_ms", 0) or 0),
             }
             conn.execute(
                 """
@@ -449,6 +500,7 @@ class Database:
                 d["rank"] = d.pop("rank_order", 1)
                 d["open_positions"] = extra.get("open_positions", [])
                 d["recent_closed_trades"] = extra.get("recent_closed_trades", [])
+                d["last_close_time_ms"] = int(extra.get("last_close_time_ms", 0) or 0)
                 out.append(d)
             return out
 
@@ -468,6 +520,7 @@ class Database:
         copied_wins: Optional[int] = None,
         copied_losses: Optional[int] = None,
         last_fill_tid: Optional[int] = None,
+        last_close_time_ms: Optional[int] = None,
         open_positions: Optional[List[Dict[str, Any]]] = None,
         recent_closed_trades: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
@@ -482,6 +535,8 @@ class Database:
                 extra["open_positions"] = open_positions
             if recent_closed_trades is not None:
                 extra["recent_closed_trades"] = recent_closed_trades
+            if last_close_time_ms is not None:
+                extra["last_close_time_ms"] = int(last_close_time_ms)
 
             conn.execute(
                 """
