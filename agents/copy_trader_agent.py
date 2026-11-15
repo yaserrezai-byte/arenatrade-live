@@ -216,6 +216,7 @@ class CopyTraderAgent(BaseAgent):
             is_primary = idx == 0
             addr = whale["address"]
             last_tid = int(whale.get("last_fill_tid") or 0)
+            last_close_time_ms = int(whale.get("last_close_time_ms") or 0)
 
             try:
                 open_pos, closed_events, win_rate, newest_tid = await hl_copy_source.fetch_trader_state_and_fills(addr)
@@ -225,11 +226,17 @@ class CopyTraderAgent(BaseAgent):
             consec_losses = int(whale.get("consecutive_losses", 0))
             copied_wins = int(whale.get("copied_wins", 0))
             copied_losses = int(whale.get("copied_losses", 0))
+            newest_close_time_ms = max(
+                (int(e.get("time", 0)) for e in closed_events), default=last_close_time_ms
+            )
 
             # 1. Check newly closed fills for 2-Consecutive-Mistakes rule
             whale_rotated = False
-            if last_tid > 0 and closed_events:
-                new_events = [e for e in closed_events if int(e["tid"]) > last_tid]
+            if last_close_time_ms > 0 and closed_events:
+                # Hyperliquid trade IDs are unique identifiers, not a guaranteed
+                # chronological sequence. The old numeric tid comparison silently
+                # missed every closed outcome in the two-week audit. Use event time.
+                new_events = [e for e in closed_events if int(e["time"]) > last_close_time_ms]
                 new_events.sort(key=lambda x: x["time"])
                 for ev in new_events:
                     if ev["closed_pnl"] < 0:
@@ -256,7 +263,8 @@ class CopyTraderAgent(BaseAgent):
                                     consecutive_losses=consec_losses,
                                     copied_wins=copied_wins,
                                     copied_losses=copied_losses,
-                                    latest_tid=max(newest_tid, ev["tid"]),
+                                    last_fill_tid=max(newest_tid, ev["tid"]),
+                                    last_close_time_ms=newest_close_time_ms,
                                     open_positions=open_pos,
                                     recent_closed_trades=closed_events[:12],
                                 )
@@ -276,6 +284,7 @@ class CopyTraderAgent(BaseAgent):
                 copied_wins=copied_wins,
                 copied_losses=copied_losses,
                 last_fill_tid=effective_tid,
+                last_close_time_ms=newest_close_time_ms,
                 open_positions=open_pos,
                 recent_closed_trades=closed_events[:12],
             )
@@ -480,6 +489,7 @@ class CopyTraderAgent(BaseAgent):
             copied_wins=copied_wins,
             copied_losses=copied_losses,
             last_fill_tid=latest_tid,
+            last_close_time_ms=max((int(e.get("time", 0)) for e in closed_events), default=0),
             open_positions=open_pos,
             recent_closed_trades=closed_events,
         )
@@ -514,6 +524,7 @@ class CopyTraderAgent(BaseAgent):
                 status="ACTIVE",
                 consecutive_losses=0,
                 last_fill_tid=new_tid,
+                last_close_time_ms=max((int(e.get("time", 0)) for e in cl_ev), default=0),
                 open_positions=pos,
                 recent_closed_trades=cl_ev[:12],
             )
