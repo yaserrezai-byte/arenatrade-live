@@ -130,7 +130,7 @@ class TelegramNotifierAgent:
             decision_banner,
             f"{header_icon} <b>#{sig['symbol']}USDT | {dir_fa}</b>",
             "━━━━━━━━━━━━━━━━━━━━",
-            f"⭐ <b>امتیاز کیفیت ستاپ:</b> <code>{sig['confidence']:.1f}/100</code>",
+            f"📊 <b>امتیاز خام همگرایی ایجنت‌ها:</b> <code>{sig['confidence']:.1f}/100</code> <i>(درصد برد نیست)</i>",
             f"⏱ <b>تایم‌فریم مرجع:</b> <code>{sig['timeframe']}</code> | بررسی خودکار هر ۱۵ دقیقه",
         ]
 
