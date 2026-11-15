@@ -100,6 +100,8 @@ class MarketScannerService:
             vetoes = comp.get("safety_veto_reasons") or []
             if sym in sent_symbols or delivery_state == "SENT":
                 act_badge = " 🎯<b>[سیگنال جدید ارسال شد]</b>"
+            elif delivery_state == "ACTIVE_SIGNAL_EXISTS":
+                act_badge = " 🛡<b>[سیگنال قبلی همین ارز هنوز باز است؛ ارسال تکراری متوقف شد]</b>"
             elif delivery_state == "VALID_BUT_COOLDOWN":
                 act_badge = " ✅<b>[معتبر؛ مشابه اخیر قبلاً ارسال شده]</b>"
             elif delivery_state == "DELIVERY_FAILED":
@@ -115,7 +117,7 @@ class MarketScannerService:
             htf_fa = htf_map.get(str(comp.get("htf_4h_regime", "NEUTRAL")), "نامشخص")
 
             lines.append(
-                f"{ic} <b>#{sym}</b> | جهت: <code>{d}</code> | اطمینان: <code>{conf:.0f}/100</code> | R:R خالص: <code>1:{rr_net:.2f}</code>{act_badge}\n"
+                f"{ic} <b>#{sym}</b> | جهت: <code>{d}</code> | همگرایی خام: <code>{conf:.0f}/100</code> | R:R خالص: <code>1:{rr_net:.2f}</code>{act_badge}\n"
                 f"💵 قیمت: <code>{px} USDT</code> | جریان خالص ۱ساعته: <code>{flow_str}</code>\n"
                 f"📐 روند 4H: <b>{htf_fa}</b> | RSI-1h: <code>{rsi_str}</code> | {ma_stack}{sr_str}{fib_str}{delta_str}"
             )
@@ -176,9 +178,14 @@ class MarketScannerService:
                     )
                     cooldown_passed = (not prev) or ((now - prev["ts"]) > 2600) or (px_shift_pct >= 0.7)
                     sig["scan_delivery_state"] = "NOT_ACTIONABLE"
+                    active_thesis = db.has_active_sent_market_signal(
+                        sig["symbol"], str(sig.get("strategy_version") or settings.get("STRATEGY_VERSION", ""))
+                    )
 
                     if sig["actionable"] and settings.get("TELEGRAM_AUTO_SEND", True):
-                        if not cooldown_passed:
+                        if active_thesis:
+                            sig["scan_delivery_state"] = "ACTIVE_SIGNAL_EXISTS"
+                        elif not cooldown_passed:
                             sig["scan_delivery_state"] = "VALID_BUT_COOLDOWN"
                         else:
                             from agents.telegram_agent import telegram_agent
