@@ -71,6 +71,7 @@ class MarketScannerService:
             reps = {rep["agent_id"]: rep.get("metrics", {}) for rep in sig.get("agent_reports", [])}
             mf = reps.get("money_flow", {})
             ind = reps.get("indicators", {})
+            trend = reps.get("trend", {})
             sr = reps.get("support_resistance", {})
 
             net_1h = float(mf.get("net_inflow_1h_usd", 0.0)) / 1e6
@@ -115,11 +116,13 @@ class MarketScannerService:
 
             htf_map = {"BULLISH": "صعودی 🟢", "BEARISH": "نزولی 🔴", "NEUTRAL": "خنثی ⚪"}
             htf_fa = htf_map.get(str(comp.get("htf_4h_regime", "NEUTRAL")), "نامشخص")
+            ma_map = {"BULLISH": "صعودی 🟢", "BEARISH": "نزولی 🔴", "MIXED": "ناهمسو ⚪"}
+            ma_align_fa = ma_map.get(str(trend.get("ma20_60_alignment", "MIXED")), "نامشخص")
 
             lines.append(
                 f"{ic} <b>#{sym}</b> | جهت: <code>{d}</code> | همگرایی خام: <code>{conf:.0f}/100</code> | R:R خالص: <code>1:{rr_net:.2f}</code>{act_badge}\n"
                 f"💵 قیمت: <code>{px} USDT</code> | جریان خالص ۱ساعته: <code>{flow_str}</code>\n"
-                f"📐 روند 4H: <b>{htf_fa}</b> | RSI-1h: <code>{rsi_str}</code> | {ma_stack}{sr_str}{fib_str}{delta_str}"
+                f"📐 روند 4H: <b>{htf_fa}</b> | MA20/60 (15m+5m): <b>{ma_align_fa}</b> | RSI-1h: <code>{rsi_str}</code> | {ma_stack}{sr_str}{fib_str}{delta_str}"
             )
 
         lines.append("━━━━━━━━━━━━━━━━━━━━")
