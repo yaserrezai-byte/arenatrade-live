@@ -215,6 +215,34 @@ class ForwardValidationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(test_db.get_validation_stats("TEST_V1")["no_entry"], 1)
 
 
+class EvidenceV2DatabaseTests(unittest.TestCase):
+    def test_primary_candle_events_are_deduplicated_and_sent_signal_is_linked(self):
+        with tempfile.TemporaryDirectory() as td:
+            test_db = Database(db_path=Path(td) / "events.db")
+            base = valid_signal(
+                strategy_version="MA_V2_EVIDENCE_2026_11_15",
+                research_snapshot={"primary_candle_timestamp_ms": 1234560000},
+            )
+            first = dict(base, signal_id="EV-1", telegram_sent=False)
+            second = dict(base, signal_id="EV-2", telegram_sent=False)
+            test_db.save_signal(first)
+            test_db.save_signal(second)
+            self.assertEqual(len(test_db.list_open_signal_outcomes()), 1)
+            test_db.mark_signal_telegram_sent("EV-2")
+            linked = test_db.list_open_signal_outcomes()[0]
+            self.assertEqual(linked["signal_id"], "EV-2")
+            self.assertTrue(test_db.has_active_sent_market_signal("BTC", "MA_V2_EVIDENCE_2026_11_15"))
+
+    def test_copy_close_watermark_persists(self):
+        with tempfile.TemporaryDirectory() as td:
+            test_db = Database(db_path=Path(td) / "copy.db")
+            test_db.upsert_trader({
+                "address": "0xabc", "label": "T", "rank": 1, "status": "ACTIVE"
+            })
+            test_db.update_trader_state("0xabc", last_close_time_ms=987654321)
+            self.assertEqual(test_db.get_active_trader()["last_close_time_ms"], 987654321)
+
+
 class PendingDeliveryTests(unittest.TestCase):
     def test_pending_copy_signal_is_deduplicated_by_whale_position(self):
         with tempfile.TemporaryDirectory() as td:
