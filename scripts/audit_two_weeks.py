@@ -89,6 +89,53 @@ for dim, key_fn in {
         groups[key_fn(x)].append(x)
     report[dim] = {k: summarize_outcomes(v) for k, v in sorted(groups.items())}
 
+for suffix, subset in {
+    "sent": [x for x in outcomes if x["telegram_sent"]],
+    "actionable": [x for x in outcomes if x["snapshot"].get("actionable_at_creation")],
+}.items():
+    for dim, key_fn in {
+        "symbol": lambda x: x["symbol"],
+        "direction": lambda x: x["direction"],
+    }.items():
+        groups = defaultdict(list)
+        for x in subset:
+            groups[key_fn(x)].append(x)
+        report[f"by_{dim}_{suffix}"] = {k: summarize_outcomes(v) for k, v in sorted(groups.items())}
+
+# Quantify duplicate/overlapping alerts for the same symbol. A new alert while an older
+# sent signal is still unresolved is not an independent trade opportunity.
+sent_sorted = sorted([x for x in outcomes if x["telegram_sent"]], key=lambda x: x["signal_created_at"])
+active_until = {}
+overlap_count = 0
+sent_gaps_by_symbol = defaultdict(list)
+last_sent = {}
+for x in sent_sorted:
+    sym = x["symbol"]
+    ts = int(x["signal_created_at"])
+    if sym in last_sent:
+        sent_gaps_by_symbol[sym].append(ts - last_sent[sym])
+    last_sent[sym] = ts
+    if ts < active_until.get(sym, 0):
+        overlap_count += 1
+    end_ts = int(x.get("exit_at") or (ts + 96 * 900))
+    active_until[sym] = max(active_until.get(sym, 0), end_ts)
+report["alert_overlap"] = {
+    "sent_with_outcomes": len(sent_sorted),
+    "overlapping_same_symbol": overlap_count,
+    "overlap_pct": round(100 * overlap_count / len(sent_sorted), 2) if sent_sorted else None,
+    "median_gap_sec_by_symbol": {
+        k: statistics.median(v) for k, v in sent_gaps_by_symbol.items() if v
+    },
+}
+
+# Daily performance exposes regime concentration and whether one short period dominates.
+daily = defaultdict(list)
+for x in outcomes:
+    if x["status"] in ("CLOSED", "TIMEOUT") and x["telegram_sent"]:
+        day = time.strftime("%Y-%m-%d", time.gmtime(int(x["signal_created_at"])))
+        daily[day].append(x)
+report["daily_sent"] = {k: summarize_outcomes(v) for k, v in sorted(daily.items())}
+
 filters = {
     "actionable": lambda s: bool(s.get("actionable_at_creation")),
     "htf_aligned": lambda s: bool(s.get("htf_aligned")),
@@ -121,12 +168,17 @@ report["telegram"] = {
 }
 
 # Copy trader state / rotations
+trader_rows = rows("SELECT address,label,status,rank_order,win_rate_pct,consecutive_losses,copied_wins,copied_losses,updated_at FROM copy_traders ORDER BY rank_order")
 report["copy_trader"] = {
-    "traders": scalar("SELECT COUNT(*) FROM copy_traders"),
-    "active": scalar("SELECT COUNT(*) FROM copy_traders WHERE status='ACTIVE'"),
-    "rotated_out": scalar("SELECT COUNT(*) FROM copy_traders WHERE status='ROTATED_OUT'"),
+    "traders": len(trader_rows),
+    "active": sum(x["status"] == "ACTIVE" for x in trader_rows),
+    "rotated_out": sum(x["status"] == "ROTATED_OUT" for x in trader_rows),
     "rotations_14d": scalar("SELECT COUNT(*) FROM copy_rotation_logs WHERE created_at >= ?", (cutoff,)),
     "signaled_open_positions": scalar("SELECT COUNT(*) FROM copy_signaled_positions"),
+    "total_counted_wins": sum(int(x["copied_wins"] or 0) for x in trader_rows),
+    "total_counted_losses": sum(int(x["copied_losses"] or 0) for x in trader_rows),
+    "max_consecutive_losses": max((int(x["consecutive_losses"] or 0) for x in trader_rows), default=0),
+    "roster": trader_rows,
 }
 
 OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
