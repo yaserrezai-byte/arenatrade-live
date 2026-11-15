@@ -7,7 +7,9 @@ import numpy as np
 import pandas as pd
 from pydantic import ValidationError
 
+from agents.orchestrator_agent import ma20_60_allows_entry
 from agents.sr_agent import SupportResistanceAgent
+from agents.trend_agent import TrendDetectionAgent
 from core.database import Database
 from core.models import FuturesSignal
 from data_sources.market_data import MarketDataHub
@@ -146,6 +148,53 @@ class FibonacciTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(fib["impulse_direction"], "BEARISH")
         self.assertLess(fib["levels"]["23.6%"], fib["levels"]["78.6%"])
         self.assertLess(fib["extension_1.618"], fib["swing_low"])
+
+
+class MandatoryMaAlignmentTests(unittest.IsolatedAsyncioTestCase):
+    def test_entry_gate_requires_exact_directional_alignment(self):
+        self.assertTrue(ma20_60_allows_entry("LONG", "BULLISH"))
+        self.assertTrue(ma20_60_allows_entry("SHORT", "BEARISH"))
+        self.assertFalse(ma20_60_allows_entry("LONG", "MIXED"))
+        self.assertFalse(ma20_60_allows_entry("SHORT", "BULLISH"))
+
+    @staticmethod
+    def frame(start: float, end: float, n: int = 210, step_ms: int = 900_000):
+        close = np.linspace(start, end, n)
+        return pd.DataFrame({
+            "timestamp": np.arange(n) * step_ms,
+            "open": close,
+            "high": close + 1.0,
+            "low": close - 1.0,
+            "close": close,
+            "volume": np.full(n, 100.0),
+            "quote_volume": np.full(n, 100_000.0),
+        })
+
+    async def test_ma20_ma60_is_calculated_for_15m_and_5m(self):
+        up_15m = self.frame(100, 150)
+        up_5m = self.frame(120, 160, step_ms=300_000)
+        report = await TrendDetectionAgent().analyze("BTC", {
+            "df_primary": up_15m,
+            "df_htf": up_15m,
+            "df_ltf": up_15m,
+            "df_5m": up_5m,
+        })
+        self.assertEqual(report.metrics["ma20_60_alignment"], "BULLISH")
+        self.assertGreater(report.metrics["ma20_15m"], report.metrics["ma60_15m"])
+        self.assertGreater(report.metrics["ma20_5m"], report.metrics["ma60_5m"])
+
+    async def test_opposite_5m_and_15m_is_mixed_not_entry_aligned(self):
+        up_15m = self.frame(100, 150)
+        down_5m = self.frame(160, 100, step_ms=300_000)
+        report = await TrendDetectionAgent().analyze("BTC", {
+            "df_primary": up_15m,
+            "df_htf": up_15m,
+            "df_ltf": up_15m,
+            "df_5m": down_5m,
+        })
+        self.assertEqual(report.metrics["ma20_60_alignment"], "MIXED")
+        self.assertTrue(report.metrics["ma_15m_bullish"])
+        self.assertTrue(report.metrics["ma_5m_bearish"])
 
 
 class ForwardValidationTests(unittest.IsolatedAsyncioTestCase):
