@@ -21,6 +21,13 @@ from data_sources.market_data import market_hub
 from data_sources.news_fundamental import news_fundamental_hub
 
 
+def ma20_60_allows_entry(direction: str, alignment: str) -> bool:
+    """Mandatory dual-timeframe gate: both 15m and 5m must agree."""
+    return (direction == "LONG" and alignment == "BULLISH") or (
+        direction == "SHORT" and alignment == "BEARISH"
+    )
+
+
 class OrchestratorAgent:
     """
     Pure Market Analysis Strategist & Futures Risk Engine (100% Separated from Copy-Trading):
@@ -62,10 +69,11 @@ class OrchestratorAgent:
         tf_ltf = str(settings.get("LTF_TIMEFRAME", "15m"))
 
         # 1. Gather all market, derivatives, news, and fundamental datasets concurrently
-        df_primary, df_htf, df_ltf, derivatives, news_items, fundamentals = await asyncio.gather(
+        df_primary, df_htf, df_ltf, df_5m, derivatives, news_items, fundamentals = await asyncio.gather(
             market_hub.fetch_ohlcv(coin, tf_primary, 210),
             market_hub.fetch_ohlcv(coin, tf_htf, 160),
             market_hub.fetch_ohlcv(coin, tf_ltf, 140),
+            market_hub.fetch_ohlcv(coin, "5m", 140),
             market_hub.fetch_derivatives_bundle(coin),
             news_fundamental_hub.fetch_news(coin),
             news_fundamental_hub.fetch_fundamentals(coin),
@@ -77,6 +85,7 @@ class OrchestratorAgent:
             "df_primary": df_primary,
             "df_htf": df_htf,
             "df_ltf": df_ltf,
+            "df_5m": df_5m,
             "derivatives": derivatives,
             "news": news_items,
             "fundamentals": fundamentals,
@@ -283,6 +292,15 @@ class OrchestratorAgent:
                 veto_reasons.append(
                     "فیلتر روند ۴ساعته: روند 4H نزولی تایید نشده است؛ سیگنال SHORT فقط تحت‌نظر می‌ماند."
                 )
+
+        # Mandatory MA20/MA60 alignment on confirmed 15m AND 5m candles.
+        # LONG requires price > MA20 > MA60 on both; SHORT requires the reverse.
+        ma_alignment = str(trend_m.get("ma20_60_alignment", "MIXED"))
+        if direction in ("LONG", "SHORT") and not ma20_60_allows_entry(direction, ma_alignment):
+            direction_fa = "صعودی" if direction == "LONG" else "نزولی"
+            veto_reasons.append(
+                f"فیلتر اجباری MA20/MA60: آرایش {direction_fa} هم‌زمان در تایم‌های ۱۵ و ۵ دقیقه تایید نشده؛ {direction} فقط تحت‌نظر است."
+            )
         room_up_atr = min(
             float(report_map["support_resistance"].metrics.get("room_up_atr", 2.0)),
             (r1 - curr_px) / max(atr, 1e-9),
@@ -380,6 +398,12 @@ class OrchestratorAgent:
                 "live_deviation_atr": round(live_deviation_atr, 3),
                 "htf_4h_regime": htf_regime,
                 "htf_4h_alignment_required": bool(settings.get("REQUIRE_4H_TREND_ALIGNMENT", True)),
+                "ma20_60_15m_5m_required": True,
+                "ma20_60_alignment": ma_alignment,
+                "ma20_15m": trend_m.get("ma20_15m"),
+                "ma60_15m": trend_m.get("ma60_15m"),
+                "ma20_5m": trend_m.get("ma20_5m"),
+                "ma60_5m": trend_m.get("ma60_5m"),
                 "safety_veto_reasons": veto_reasons,
                 "risk_reward_method": "WORST_ENTRY_NET_OF_ESTIMATED_COSTS_TO_STRUCTURAL_TARGET",
                 "estimated_round_trip_cost_pct": cost_pct,
@@ -390,11 +414,15 @@ class OrchestratorAgent:
             },
             agent_reports=reports,
             telegram_sent=False,
-            strategy_version=str(settings.get("STRATEGY_VERSION", "MA_V2_EVIDENCE_2026_11_15")),
+            strategy_version=str(settings.get("STRATEGY_VERSION", "MA_V3_MA20_60_5M15M")),
             research_snapshot={
                 "primary_candle_timestamp_ms": int(df_primary["timestamp"].iloc[-1]),
                 "htf_candle_timestamp_ms": int(df_htf["timestamp"].iloc[-1]),
+                "candle_15m_timestamp_ms": int(df_ltf["timestamp"].iloc[-1]),
+                "candle_5m_timestamp_ms": int(df_5m["timestamp"].iloc[-1]),
                 "htf_4h_regime": htf_regime,
+                "ma20_60_alignment": ma_alignment,
+                "ma20_60_pass": ma20_60_allows_entry(direction, ma_alignment),
                 "htf_aligned": (
                     (direction == "LONG" and htf_bullish)
                     or (direction == "SHORT" and htf_bearish)
