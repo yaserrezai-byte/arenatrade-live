@@ -1,0 +1,34 @@
+name: Arenatrade Two-Week Audit Snapshot
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore latest persistent database
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/futures_intelligence.db
+            data/futures_intelligence.db-journal
+            data/futures_intelligence.db-wal
+            data/futures_intelligence.db-shm
+          key: audit-readonly-${{ github.run_id }}
+          restore-keys: |
+            arenatrade-db-
+      - name: Produce sanitized statistical audit
+        run: python scripts/audit_two_weeks.py
+      - name: Upload audit report only
+        uses: actions/upload-artifact@v4
+        with:
+          name: arenatrade-audit-${{ github.run_id }}
+          path: audit_snapshot.json
+          retention-days: 3
