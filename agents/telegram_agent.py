@@ -153,11 +153,26 @@ class TelegramNotifierAgent:
         # Extract Money Flow & Indicator metrics for explicit Telegram display
         mf_m = {}
         ind_m = {}
+        trend_m = {}
         for r in sig.get("agent_reports", []):
             if r.get("agent_id") == "money_flow":
                 mf_m = r.get("metrics", {})
             elif r.get("agent_id") == "indicators":
                 ind_m = r.get("metrics", {})
+            elif r.get("agent_id") == "trend":
+                trend_m = r.get("metrics", {})
+
+        if trend_m:
+            ma_fa = {"BULLISH": "صعودی 🟢", "BEARISH": "نزولی 🔴", "MIXED": "ناهمسو/رد ورود ⚪"}.get(
+                str(trend_m.get("ma20_60_alignment", "MIXED")), "نامشخص"
+            )
+            lines.extend([
+                "",
+                "📏 <b>فیلتر اجباری MA20/MA60:</b>",
+                f"• هم‌راستایی ۱۵m و ۵m: <b>{ma_fa}</b>",
+                f"• ۱۵m: MA20=<code>{_fmt_price(float(trend_m.get('ma20_15m', 0)))}</code> | MA60=<code>{_fmt_price(float(trend_m.get('ma60_15m', 0)))}</code>",
+                f"• ۵m: MA20=<code>{_fmt_price(float(trend_m.get('ma20_5m', 0)))}</code> | MA60=<code>{_fmt_price(float(trend_m.get('ma60_5m', 0)))}</code>",
+            ])
 
         if mf_m:
             f1h = float(mf_m.get("net_inflow_1h_usd", 0.0)) / 1e6
