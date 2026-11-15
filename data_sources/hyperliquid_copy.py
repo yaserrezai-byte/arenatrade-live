@@ -96,6 +96,9 @@ class HyperliquidCopySource:
                 item["rank"] = idx + 1
                 item["open_positions"] = positions
                 item["recent_closed_trades"] = closed_trades[:12]
+                item["last_close_time_ms"] = max(
+                    (int(e.get("time", 0)) for e in closed_trades), default=0
+                )
                 item["win_rate_pct"] = win_rate
                 item["last_fill_tid"] = latest_tid
                 # Boost score if trader currently has active positions and high win rate
