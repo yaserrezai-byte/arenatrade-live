@@ -390,8 +390,10 @@ class OrchestratorAgent:
             },
             agent_reports=reports,
             telegram_sent=False,
-            strategy_version=str(settings.get("STRATEGY_VERSION", "MA_V1_FROZEN_2026_11_05")),
+            strategy_version=str(settings.get("STRATEGY_VERSION", "MA_V2_EVIDENCE_2026_11_15")),
             research_snapshot={
+                "primary_candle_timestamp_ms": int(df_primary["timestamp"].iloc[-1]),
+                "htf_candle_timestamp_ms": int(df_htf["timestamp"].iloc[-1]),
                 "htf_4h_regime": htf_regime,
                 "htf_aligned": (
                     (direction == "LONG" and htf_bullish)
@@ -507,7 +509,7 @@ class OrchestratorAgent:
         status_sentence = (
             f"ستاپ معاملاتی با نسبت ریسک به ریوارد 1:{rr_tp2:.2f} تایید شده است."
             if actionable
-            else f"امتیاز کیفیت این ستاپ {confidence:.0f}/100 است؛ فعلاً شرایط ورود کامل نیست و باید برای تایید یا پولبک مناسب منتظر ماند."
+            else f"امتیاز خام همگرایی ایجنت‌ها {confidence:.0f}/100 است؛ شرایط ورود کامل نیست و باید برای تایید یا پولبک مناسب منتظر ماند."
         )
 
         text = (
