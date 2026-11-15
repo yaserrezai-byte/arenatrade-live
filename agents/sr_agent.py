@@ -314,8 +314,9 @@ class SupportResistanceAgent(BaseAgent):
         score = 0.0
         bullets: List[str] = []
 
-        # Fibonacci confluence is directional and only scores when the confirmed 4H
-        # trend and the latest confirmed candle reaction agree. A bare touch is not a signal.
+        # Fibonacci remains descriptive research metadata. The two-week audit showed
+        # no incremental edge, so it no longer changes the production score. A bare
+        # touch or confluence can be reported, but cannot create an entry signal.
         htf_close_s = df_htf["close"]
         htf_ema21 = float(htf_close_s.ewm(span=21, adjust=False).mean().iloc[-1])
         htf_ema50 = float(htf_close_s.ewm(span=50, adjust=False).mean().iloc[-1])
@@ -329,16 +330,12 @@ class SupportResistanceAgent(BaseAgent):
 
         if nearest_fib_dist_atr <= 0.30:
             if fib_impulse == "BULLISH" and fib_htf_bull and bullish_reaction:
-                fib_points = 22.0 if in_golden_pocket else 16.0
-                score += fib_points
                 fib_confluence = "BULLISH_CONFIRMED"
                 bullets.append(
                     f"همگرایی صعودی فیبوناچی: واکنش تاییدشده به سطح {nearest_fib_name} در ${self.fmt_px(nearest_fib_price)} هم‌جهت با روند ۴ساعته"
                     + (" (ناحیه طلایی 61.8–65%)." if in_golden_pocket else ".")
                 )
             elif fib_impulse == "BEARISH" and fib_htf_bear and bearish_reaction:
-                fib_points = 22.0 if in_golden_pocket else 16.0
-                score -= fib_points
                 fib_confluence = "BEARISH_CONFIRMED"
                 bullets.append(
                     f"همگرایی نزولی فیبوناچی: ریجکشن تاییدشده از سطح {nearest_fib_name} در ${self.fmt_px(nearest_fib_price)} هم‌جهت با روند ۴ساعته"
