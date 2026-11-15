@@ -79,6 +79,7 @@ class TrendDetectionAgent(BaseAgent):
         df: pd.DataFrame = context["df_primary"]
         df_htf: pd.DataFrame = context.get("df_htf", df)
         df_ltf: pd.DataFrame = context.get("df_ltf", df)
+        df_5m: pd.DataFrame = context.get("df_5m", df_ltf)
 
         close = df["close"]
         curr_px = float(close.iloc[-1])
@@ -98,6 +99,21 @@ class TrendDetectionAgent(BaseAgent):
         ltf_close = df_ltf["close"]
         ltf_ema9 = float(ltf_close.ewm(span=9, adjust=False).mean().iloc[-1])
         ltf_ema21 = float(ltf_close.ewm(span=21, adjust=False).mean().iloc[-1])
+
+        # User-mandated MA20/MA60 regime on both confirmed 15m and 5m candles.
+        # SMA is used because "MA" (rather than EMA) was explicitly requested.
+        close_15m = df_ltf["close"]
+        close_5m = df_5m["close"]
+        ma20_15m = float(close_15m.rolling(20).mean().iloc[-1])
+        ma60_15m = float(close_15m.rolling(60).mean().iloc[-1])
+        px_15m = float(close_15m.iloc[-1])
+        ma20_5m = float(close_5m.rolling(20).mean().iloc[-1])
+        ma60_5m = float(close_5m.rolling(60).mean().iloc[-1])
+        px_5m = float(close_5m.iloc[-1])
+        ma_15m_bullish = px_15m > ma20_15m > ma60_15m
+        ma_15m_bearish = px_15m < ma20_15m < ma60_15m
+        ma_5m_bullish = px_5m > ma20_5m > ma60_5m
+        ma_5m_bearish = px_5m < ma20_5m < ma60_5m
 
         adx_info = self._compute_adx(df)
         adx = adx_info["adx"]
@@ -141,6 +157,21 @@ class TrendDetectionAgent(BaseAgent):
         # Supertrend + LTF trigger
         score += 16.0 if supertrend_dir == 1 else -16.0
         score += 8.0 if ltf_ema9 > ltf_ema21 else -8.0
+
+        # MA20/MA60 contributes to trend scoring, while the orchestrator also applies
+        # it as a mandatory entry gate on both timeframes.
+        if ma_15m_bullish:
+            score += 10.0
+        elif ma_15m_bearish:
+            score -= 10.0
+        if ma_5m_bullish:
+            score += 8.0
+        elif ma_5m_bearish:
+            score -= 8.0
+        bullets.append(
+            f"MA20/MA60: ۱۵دقیقه={'صعودی' if ma_15m_bullish else ('نزولی' if ma_15m_bearish else 'خنثی')} | "
+            f"۵دقیقه={'صعودی' if ma_5m_bullish else ('نزولی' if ma_5m_bearish else 'خنثی')}."
+        )
 
         # Market Structure BOS / HH-HL
         structure_label = "RANGE"
@@ -188,6 +219,18 @@ class TrendDetectionAgent(BaseAgent):
                 "ema200": round(ema200, 6),
                 "htf_bullish": htf_bull,
                 "htf_bearish": htf_bear,
+                "ma20_15m": round(ma20_15m, 6),
+                "ma60_15m": round(ma60_15m, 6),
+                "ma20_5m": round(ma20_5m, 6),
+                "ma60_5m": round(ma60_5m, 6),
+                "ma_15m_bullish": ma_15m_bullish,
+                "ma_15m_bearish": ma_15m_bearish,
+                "ma_5m_bullish": ma_5m_bullish,
+                "ma_5m_bearish": ma_5m_bearish,
+                "ma20_60_alignment": (
+                    "BULLISH" if ma_15m_bullish and ma_5m_bullish
+                    else ("BEARISH" if ma_15m_bearish and ma_5m_bearish else "MIXED")
+                ),
                 "adx": round(adx, 1),
                 "plus_di": round(plus_di, 1),
                 "minus_di": round(minus_di, 1),
