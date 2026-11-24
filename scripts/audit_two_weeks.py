@@ -243,6 +243,38 @@ report["latest_scan_state"] = {
     "latest_by_symbol": latest_by_symbol,
 }
 
+# Post-deployment feature cohorts for diagnosing late MA entries without inventing
+# thresholds. These are descriptive and only use delivered, closed latest-version events.
+feature_groups = defaultdict(list)
+for x in latest_closed:
+    if not x["telegram_sent"]:
+        continue
+    payload = x["payload"]
+    reports = {r.get("agent_id"): r.get("metrics", {}) for r in payload.get("agent_reports", [])}
+    trend = reports.get("trend", {})
+    ind = reports.get("indicators", {})
+    px = float(payload.get("current_price") or 0)
+    ma20_5m = float(trend.get("ma20_5m") or 0)
+    ma20_15m = float(trend.get("ma20_15m") or 0)
+    if px > 0 and ma20_5m > 0 and ma20_15m > 0:
+        if x["direction"] == "SHORT":
+            dist = max((ma20_5m - px) / ma20_5m * 100, (ma20_15m - px) / ma20_15m * 100)
+        else:
+            dist = max((px - ma20_5m) / ma20_5m * 100, (px - ma20_15m) / ma20_15m * 100)
+        bucket = "<=0.25%" if dist <= 0.25 else ("0.25-0.50%" if dist <= 0.5 else ("0.50-1.00%" if dist <= 1.0 else ">1.00%"))
+        feature_groups[f"ma20_distance:{bucket}"].append(x)
+    rsi15 = ind.get("rsi_15m")
+    if rsi15 is not None:
+        rsi15 = float(rsi15)
+        bucket = "<30" if rsi15 < 30 else ("30-40" if rsi15 < 40 else ("40-50" if rsi15 < 50 else ">=50"))
+        feature_groups[f"rsi15:{bucket}"].append(x)
+    dev = float((payload.get("previous_comparison") or {}).get("live_deviation_atr") or 0)
+    bucket = "<=0.25" if dev <= 0.25 else ("0.25-0.50" if dev <= 0.5 else ("0.50-0.75" if dev <= 0.75 else ">0.75"))
+    feature_groups[f"live_deviation_atr:{bucket}"].append(x)
+report["latest_version_feature_cohorts_sent"] = {
+    k: summarize_outcomes(v) for k, v in sorted(feature_groups.items())
+}
+
 # Telegram reliability and scan cadence
 logs = rows("SELECT * FROM telegram_logs WHERE created_at >= ? ORDER BY created_at", (cutoff,))
 by_type = defaultdict(lambda: {"ok": 0, "fail": 0})
