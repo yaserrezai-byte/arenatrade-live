@@ -282,6 +282,42 @@ class EvidenceV2DatabaseTests(unittest.TestCase):
             self.assertEqual(linked["signal_id"], "EV-2")
             self.assertTrue(test_db.has_active_sent_market_signal("BTC", "MA_V2_EVIDENCE_2026_11_15"))
 
+    def test_performance_safety_breaker_trips_on_harmful_delivered_cohort(self):
+        with tempfile.TemporaryDirectory() as td:
+            test_db = Database(db_path=Path(td) / "breaker.db")
+            version = "BAD_TEST_VERSION"
+            for i in range(20):
+                sig = valid_signal(
+                    signal_id=f"BR-{i}",
+                    strategy_version=version,
+                    telegram_sent=True,
+                    research_snapshot={"primary_candle_timestamp_ms": i},
+                )
+                test_db.save_signal(sig)
+                test_db.update_signal_outcome(
+                    sig["signal_id"], status="CLOSED", result="SL",
+                    net_r=-1.1, exit_at=1000 + i,
+                )
+            state = test_db.get_market_signal_safety_state(version)
+            self.assertTrue(state["tripped"])
+            self.assertEqual(state["sample"], 20)
+            self.assertEqual(state["stop_rate_pct"], 100.0)
+
+    def test_performance_safety_breaker_ignores_small_sample(self):
+        with tempfile.TemporaryDirectory() as td:
+            test_db = Database(db_path=Path(td) / "breaker-small.db")
+            version = "SMALL_TEST_VERSION"
+            for i in range(5):
+                sig = valid_signal(
+                    signal_id=f"SM-{i}", strategy_version=version, telegram_sent=True,
+                    research_snapshot={"primary_candle_timestamp_ms": i},
+                )
+                test_db.save_signal(sig)
+                test_db.update_signal_outcome(
+                    sig["signal_id"], status="CLOSED", result="SL", net_r=-1.1, exit_at=1000 + i,
+                )
+            self.assertFalse(test_db.get_market_signal_safety_state(version)["tripped"])
+
     def test_copy_close_watermark_persists(self):
         with tempfile.TemporaryDirectory() as td:
             test_db = Database(db_path=Path(td) / "copy.db")
