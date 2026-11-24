@@ -182,6 +182,18 @@ report["latest_version_diagnostics"] = {
     "all": summarize_outcomes(latest_version_items),
     "sent": summarize_outcomes([x for x in latest_version_items if x["telegram_sent"]]),
     "actionable": summarize_outcomes([x for x in latest_version_items if x["snapshot"].get("actionable_at_creation")]),
+    "sent_by_symbol": {
+        k: summarize_outcomes(v) for k, v in sorted({
+            sym: [x for x in latest_version_items if x["telegram_sent"] and x["symbol"] == sym]
+            for sym in {x["symbol"] for x in latest_version_items if x["telegram_sent"]}
+        }.items())
+    },
+    "sent_by_direction": {
+        k: summarize_outcomes(v) for k, v in sorted({
+            direction: [x for x in latest_version_items if x["telegram_sent"] and x["direction"] == direction]
+            for direction in {x["direction"] for x in latest_version_items if x["telegram_sent"]}
+        }.items())
+    },
     "agent_agreement_cohorts": {
         aid: summarize_outcomes(items) for aid, items in sorted(agent_agreement.items())
     },
