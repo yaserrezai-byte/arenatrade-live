@@ -723,6 +723,54 @@ class Database:
             )
             conn.commit()
 
+    def get_market_signal_safety_state(
+        self,
+        strategy_version: str,
+        *,
+        lookback: int = 30,
+        min_closed: int = 20,
+        max_stop_rate: float = 0.65,
+        min_expectancy_r: float = -0.10,
+    ) -> Dict[str, Any]:
+        """Fail closed when recently delivered signals show demonstrable harm.
+
+        Only delivered, closed outcomes from the same frozen strategy version are
+        considered. Watch-only observations and previous versions cannot trip it.
+        """
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT o.result, o.net_r
+                FROM signal_outcomes o
+                JOIN signals s ON s.signal_id = o.signal_id
+                WHERE o.strategy_version = ?
+                  AND s.telegram_sent = 1
+                  AND o.status IN ('CLOSED', 'TIMEOUT')
+                ORDER BY o.exit_at DESC, o.signal_created_at DESC
+                LIMIT ?
+                """,
+                (strategy_version, max(1, int(lookback))),
+            ).fetchall()
+        n = len(rows)
+        stops = sum(1 for r in rows if r["result"] == "SL")
+        net_rs = [float(r["net_r"] or 0.0) for r in rows]
+        stop_rate = stops / n if n else 0.0
+        expectancy = sum(net_rs) / n if n else None
+        tripped = n >= min_closed and (
+            stop_rate >= max_stop_rate
+            or (expectancy is not None and expectancy <= min_expectancy_r)
+        )
+        return {
+            "tripped": tripped,
+            "strategy_version": strategy_version,
+            "sample": n,
+            "stops": stops,
+            "stop_rate_pct": round(stop_rate * 100.0, 2) if n else None,
+            "expectancy_r": round(expectancy, 4) if expectancy is not None else None,
+            "lookback": lookback,
+            "min_closed": min_closed,
+        }
+
     def get_validation_stats(self, strategy_version: Optional[str] = None) -> Dict[str, Any]:
         with self._lock, self._connect() as conn:
             if strategy_version:
