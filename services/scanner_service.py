@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+import logging
 import time
 from typing import Any, Dict, List, Optional
 
@@ -7,6 +8,9 @@ from agents.copy_trader_agent import copy_trader_agent
 from agents.orchestrator_agent import orchestrator_agent
 from core.config import settings
 from core.database import db
+
+
+logger = logging.getLogger(__name__)
 
 
 def _fmt_px(px: float) -> str:
@@ -109,8 +113,10 @@ class MarketScannerService:
                 act_badge = " ⚠️<b>[خطای تحویل؛ در صف ارسال مجدد]</b>"
             elif sig.get("direction") == "NEUTRAL":
                 act_badge = " ⚪<b>[خنثی؛ بدون ورود]</b>"
+            elif any("مدارشکن ایمنی" in str(v) for v in vetoes):
+                act_badge = " 🛑<b>[توقف ایمنی: عملکرد اخیر نسخه نامعتبر است]</b>"
             elif vetoes:
-                act_badge = " ⛔<b>[ردشده توسط فیلتر ریسک/روند 4H]</b>"
+                act_badge = " ⛔<b>[ردشده توسط فیلتر ایمنی/ریسک/روند]</b>"
             else:
                 act_badge = " 👀<b>[تحت‌نظر؛ هنوز ورود ندارد]</b>"
 
@@ -204,7 +210,10 @@ class MarketScannerService:
                             else:
                                 sig["scan_delivery_state"] = "DELIVERY_FAILED"
                     return res
-                except Exception:
+                except Exception as exc:
+                    # Never silently hide a failed agent/symbol: cloud logs must retain
+                    # the symbol and exception so the watchdog/audit can diagnose it.
+                    logger.exception("Market scan failed for %s: %s", c, exc)
                     return None
 
         try:
