@@ -148,6 +148,89 @@ report["by_filter_pass"] = {
     for name, pred in filters.items()
 }
 
+# Version-specific delivered performance (the aggregate version cohort includes
+# watch-only observations and cannot explain what users actually received).
+version_sent = defaultdict(list)
+for x in outcomes:
+    if x["telegram_sent"]:
+        version_sent[x["strategy_version"]].append(x)
+report["by_version_sent"] = {
+    k: summarize_outcomes(v) for k, v in sorted(version_sent.items())
+}
+
+# Diagnose why the newest strategy is or is not sending, and whether individual
+# agents add useful selectivity when they agree with the final direction.
+latest_version = max(
+    ((x["strategy_version"], int(x["signal_created_at"])) for x in outcomes),
+    key=lambda z: z[1],
+    default=(None, 0),
+)[0]
+latest_version_items = [x for x in outcomes if x["strategy_version"] == latest_version]
+latest_closed = [x for x in latest_version_items if x["status"] in ("CLOSED", "TIMEOUT")]
+agent_agreement = defaultdict(list)
+agent_opposition = defaultdict(list)
+for x in latest_closed:
+    for rep in x["payload"].get("agent_reports", []):
+        aid = rep.get("agent_id", "unknown")
+        rep_dir = rep.get("direction", "NEUTRAL")
+        if rep_dir == x["direction"]:
+            agent_agreement[aid].append(x)
+        elif rep_dir in ("LONG", "SHORT"):
+            agent_opposition[aid].append(x)
+report["latest_version_diagnostics"] = {
+    "version": latest_version,
+    "all": summarize_outcomes(latest_version_items),
+    "sent": summarize_outcomes([x for x in latest_version_items if x["telegram_sent"]]),
+    "actionable": summarize_outcomes([x for x in latest_version_items if x["snapshot"].get("actionable_at_creation")]),
+    "agent_agreement_cohorts": {
+        aid: summarize_outcomes(items) for aid, items in sorted(agent_agreement.items())
+    },
+    "agent_opposition_cohorts": {
+        aid: summarize_outcomes(items) for aid, items in sorted(agent_opposition.items())
+    },
+}
+
+recent_market = sorted(
+    [x for x in signals if x["signal_source"] == "MARKET_ANALYSIS"],
+    key=lambda x: int(x["created_at"]), reverse=True,
+)
+latest_by_symbol = {}
+veto_counts = Counter()
+for row in recent_market:
+    payload = json.loads(row.get("payload_json") or "{}")
+    if payload.get("strategy_version") != latest_version:
+        continue
+    for reason in (payload.get("previous_comparison") or {}).get("safety_veto_reasons", []):
+        if "MA20/MA60" in reason:
+            veto_counts["MA20_MA60"] += 1
+        elif "۴ساعته" in reason or "4H" in reason:
+            veto_counts["HTF_4H"] += 1
+        elif "R:R" in reason:
+            veto_counts["STRUCTURAL_RR"] += 1
+        elif "فاصله گرفته" in reason:
+            veto_counts["CHASE"] += 1
+        else:
+            veto_counts["AGENT_OR_OTHER"] += 1
+    sym = payload.get("symbol")
+    if sym and sym not in latest_by_symbol:
+        prev = payload.get("previous_comparison") or {}
+        latest_by_symbol[sym] = {
+            "created_at": row["created_at"],
+            "direction": payload.get("direction"),
+            "actionable": bool(payload.get("actionable")),
+            "telegram_sent": bool(row.get("telegram_sent")),
+            "confidence": payload.get("confidence"),
+            "net_rr": payload.get("risk_reward_tp2"),
+            "ma20_60_alignment": prev.get("ma20_60_alignment"),
+            "htf_4h_regime": prev.get("htf_4h_regime"),
+            "veto_reasons": prev.get("safety_veto_reasons", []),
+        }
+report["latest_scan_state"] = {
+    "version": latest_version,
+    "veto_counts_all_stored_observations": dict(veto_counts),
+    "latest_by_symbol": latest_by_symbol,
+}
+
 # Telegram reliability and scan cadence
 logs = rows("SELECT * FROM telegram_logs WHERE created_at >= ? ORDER BY created_at", (cutoff,))
 by_type = defaultdict(lambda: {"ok": 0, "fail": 0})
