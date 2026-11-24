@@ -331,6 +331,14 @@ class OrchestratorAgent:
         signal_source = "MARKET_ANALYSIS"
 
         min_conf = float(settings.get("MIN_CONFIDENCE_SCORE", 60.0))
+        strategy_version = str(settings.get("STRATEGY_VERSION", "MA_V3_MA20_60_5M15M"))
+        safety_state = db.get_market_signal_safety_state(strategy_version)
+        if safety_state["tripped"]:
+            veto_reasons.append(
+                "مدارشکن ایمنی عملکرد فعال است: در ۳۰ سیگنال تحویلی اخیر همین نسخه، "
+                f"نرخ حدضرر {safety_state['stop_rate_pct']:.1f}٪ و امید ریاضی "
+                f"{safety_state['expectancy_r']:+.3f}R بوده؛ ارسال سیگنال جدید تا اصلاح نسخه متوقف است."
+            )
         actionable = (
             direction in ("LONG", "SHORT")
             and confidence >= min_conf
@@ -414,7 +422,7 @@ class OrchestratorAgent:
             },
             agent_reports=reports,
             telegram_sent=False,
-            strategy_version=str(settings.get("STRATEGY_VERSION", "MA_V3_MA20_60_5M15M")),
+            strategy_version=strategy_version,
             research_snapshot={
                 "primary_candle_timestamp_ms": int(df_primary["timestamp"].iloc[-1]),
                 "htf_candle_timestamp_ms": int(df_htf["timestamp"].iloc[-1]),
@@ -431,6 +439,7 @@ class OrchestratorAgent:
                 "structural_rr_pass": structural_tp2_available and rr_tp2 >= min_rr,
                 "confidence_pass": confidence >= min_conf,
                 "chase_filter_pass": live_deviation_atr <= 0.90,
+                "performance_safety_breaker": safety_state,
                 "veto_count": len(veto_reasons),
                 "actionable": actionable,
             },
