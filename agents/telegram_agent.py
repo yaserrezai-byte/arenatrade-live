@@ -194,7 +194,7 @@ class TelegramNotifierAgent:
                 [
                     "",
                     "📊 <b>اندیکاتورهای کلیدی (RSI ، MA و MACD):</b>",
-                    f"• <b>RSI (15m / 1h / 4h):</b> <code>{ind_m.get('rsi_15m', '--')} / {ind_m.get('rsi_14', '--')} / {ind_m.get('rsi_4h', '--')}</code>",
+                    f"• <b>RSI (5m / 15m / 1h / 4h):</b> <code>{ind_m.get('rsi_5m', '--')} / {ind_m.get('rsi_15m', '--')} / {ind_m.get('rsi_1h', '--')} / {ind_m.get('rsi_4h', '--')}</code>",
                     f"• <b>میانگین‌های متحرک (MA):</b> <code>MA20=${_fmt_price(ind_m.get('ma20', 0))}</code> | <code>MA50=${_fmt_price(ind_m.get('ma50', 0))}</code> | <code>MA200=${_fmt_price(ind_m.get('ma200', 0))}</code>",
                     f"• <b>وضعیت MA و مکدی:</b> {ind_m.get('ma_status_fa', '—')} | MACD: {ind_m.get('macd_status_fa', '—')}",
                 ]
