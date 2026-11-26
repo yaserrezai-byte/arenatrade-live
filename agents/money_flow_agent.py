@@ -30,6 +30,7 @@ class MoneyFlowAgent(BaseAgent):
     async def analyze(self, symbol: str, context: Dict[str, Any]) -> AgentReport:
         df: pd.DataFrame = context["df_primary"]
         df_ltf: pd.DataFrame = context.get("df_ltf", df)
+        df_htf: pd.DataFrame = context.get("df_htf", df)
         deriv: Dict[str, Any] = context["derivatives"]
 
         close = df["close"]
@@ -59,7 +60,9 @@ class MoneyFlowAgent(BaseAgent):
         # 4. Explicit Dollar Net Inflow / Outflow (15m, 1h, and 4-bar window)
         buy_15m_usd, sell_15m_usd, net_15m_usd = self._estimate_usd_flow(df_ltf, 1)
         buy_1h_usd, sell_1h_usd, net_1h_usd = self._estimate_usd_flow(df_ltf, 4)  # 4 x 15m
-        buy_4h_usd, sell_4h_usd, net_4h_usd = self._estimate_usd_flow(df, 4)
+        # One confirmed 4h candle. Previously this used four primary bars, which
+        # became mislabeled as 4h when the primary signal timeframe changed to 15m.
+        buy_4h_usd, sell_4h_usd, net_4h_usd = self._estimate_usd_flow(df_htf, 1)
 
         rng = (high - low).replace(0, 1e-9)
         buy_ratio = (close - low) / rng
