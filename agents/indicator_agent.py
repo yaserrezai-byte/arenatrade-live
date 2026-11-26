@@ -21,6 +21,8 @@ class TechnicalIndicatorAgent(BaseAgent):
     async def analyze(self, symbol: str, context: Dict[str, Any]) -> AgentReport:
         df: pd.DataFrame = context["df_primary"]
         df_ltf: pd.DataFrame = context.get("df_ltf", df)
+        df_5m: pd.DataFrame = context.get("df_5m", df_ltf)
+        df_1h: pd.DataFrame = context.get("df_1h", df)
         df_htf: pd.DataFrame = context.get("df_htf", df)
 
         close = df["close"]
@@ -28,11 +30,13 @@ class TechnicalIndicatorAgent(BaseAgent):
         low = df["low"]
         curr_px = float(close.iloc[-1])
 
-        # 1. Multi-Timeframe RSI (14) on 15m, Primary (1h), and HTF (4h)
+        # 1. Multi-Timeframe RSI (14): primary 15m plus 5m, 1h and confirmed 4h.
         rsi_series = self._calc_rsi(close, 14)
         rsi = float(rsi_series.iloc[-1])
         rsi_prev = float(rsi_series.iloc[-2])
+        rsi_5m = float(self._calc_rsi(df_5m["close"], 14).iloc[-1])
         rsi_ltf = float(self._calc_rsi(df_ltf["close"], 14).iloc[-1])
+        rsi_1h = float(self._calc_rsi(df_1h["close"], 14).iloc[-1])
         rsi_htf = float(self._calc_rsi(df_htf["close"], 14).iloc[-1])
 
         # 2. Moving Averages: SMA (MA20, MA50, MA200) & EMA (EMA21, EMA50, EMA200)
@@ -119,7 +123,7 @@ class TechnicalIndicatorAgent(BaseAgent):
             score -= 10.0
 
         bullets.append(
-            f"وضعیت RSI-14 در سه تایم‌فریم: ۱۵دقیقه={rsi_ltf:.1f} | ۱ساعته={rsi:.1f} | ۴ساعته={rsi_htf:.1f}."
+            f"وضعیت RSI-14: ۵دقیقه={rsi_5m:.1f} | ۱۵دقیقه={rsi_ltf:.1f} | ۱ساعته={rsi_1h:.1f} | ۴ساعته={rsi_htf:.1f}."
         )
 
         # Moving Averages (MA20 / MA50 / MA200) scoring
@@ -186,7 +190,7 @@ class TechnicalIndicatorAgent(BaseAgent):
         confidence = round(min(95.0, 50.0 + abs(score) * 0.45), 1)
 
         summary = (
-            f"RSI(15m/1h/4h)=[{rsi_ltf:.0f}/{rsi:.0f}/{rsi_htf:.0f}] | {ma_status_fa} | مکدی: {macd_status_fa} (امتیاز {score:+.0f})."
+            f"RSI(5m/15m/1h/4h)=[{rsi_5m:.0f}/{rsi_ltf:.0f}/{rsi_1h:.0f}/{rsi_htf:.0f}] | {ma_status_fa} | مکدی: {macd_status_fa} (امتیاز {score:+.0f})."
         )
 
         return AgentReport(
@@ -200,7 +204,9 @@ class TechnicalIndicatorAgent(BaseAgent):
             summary_fa=summary,
             bullets_fa=bullets[:4],
             metrics={
+                "rsi_5m": round(rsi_5m, 1),
                 "rsi_15m": round(rsi_ltf, 1),
+                "rsi_1h": round(rsi_1h, 1),
                 "rsi_14": round(rsi, 1),
                 "rsi_4h": round(rsi_htf, 1),
                 "ma20": round(ma20, 6),
