@@ -103,7 +103,7 @@ class SummaryIntegrityTests(unittest.TestCase):
             },
             "agent_reports": [
                 {"agent_id": "money_flow", "metrics": {"net_inflow_1h_usd": 1_500_000}},
-                {"agent_id": "indicators", "metrics": {"rsi_14": 57.4, "ma_status_fa": "بالای MA50"}},
+                {"agent_id": "indicators", "metrics": {"rsi_1h": 57.4, "ma_status_fa": "بالای MA50"}},
                 {"agent_id": "support_resistance", "metrics": {"s1": 95.0, "r1": 110.0}},
             ],
         })
