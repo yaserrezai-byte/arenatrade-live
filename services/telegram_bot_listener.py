@@ -399,7 +399,7 @@ class TelegramBotListener:
         from services.signal_validation_service import signal_validation_service
 
         await signal_validation_service.evaluate_all_once()
-        version = str(settings.get("STRATEGY_VERSION", "MA_V3_MA20_60_5M15M"))
+        version = str(settings.get("STRATEGY_VERSION", "MA_V4_TRUE_15M_5M_MA20_60"))
         st = db.get_validation_stats(version)
         closed = int(st["closed"])
         if closed < 30:
