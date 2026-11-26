@@ -80,7 +80,7 @@ class MarketScannerService:
 
             net_1h = float(mf.get("net_inflow_1h_usd", 0.0)) / 1e6
             flow_str = f"{net_1h:+.2f}M USD"
-            rsi_1h = ind.get("rsi_14")
+            rsi_1h = ind.get("rsi_1h")
             rsi_str = f"{float(rsi_1h):.1f}" if rsi_1h is not None else "—"
             ma_stack = str(ind.get("ma_status_fa", ""))
 
