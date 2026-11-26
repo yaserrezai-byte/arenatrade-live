@@ -64,16 +64,20 @@ class OrchestratorAgent:
         send_to_telegram: bool | None = None,
     ) -> Dict[str, Any]:
         coin = symbol.upper().replace("USDT", "").strip()
-        tf_primary = timeframe or str(settings.get("PRIMARY_TIMEFRAME", "1h"))
+        # Automated market signals are true 15-minute setups. The scheduler cadence
+        # is not a substitute for the signal timeframe; previously it scanned every
+        # 15m while still constructing 1h setups, which was misleading.
+        tf_primary = timeframe or "15m"
         tf_htf = str(settings.get("HTF_TIMEFRAME", "4h"))
-        tf_ltf = str(settings.get("LTF_TIMEFRAME", "15m"))
+        tf_ltf = "15m"
 
         # 1. Gather all market, derivatives, news, and fundamental datasets concurrently
-        df_primary, df_htf, df_ltf, df_5m, derivatives, news_items, fundamentals = await asyncio.gather(
-            market_hub.fetch_ohlcv(coin, tf_primary, 210),
+        df_primary, df_htf, df_ltf, df_5m, df_1h, derivatives, news_items, fundamentals = await asyncio.gather(
+            market_hub.fetch_ohlcv(coin, tf_primary, 240),
             market_hub.fetch_ohlcv(coin, tf_htf, 160),
-            market_hub.fetch_ohlcv(coin, tf_ltf, 140),
-            market_hub.fetch_ohlcv(coin, "5m", 140),
+            market_hub.fetch_ohlcv(coin, tf_ltf, 240),
+            market_hub.fetch_ohlcv(coin, "5m", 240),
+            market_hub.fetch_ohlcv(coin, "1h", 210),
             market_hub.fetch_derivatives_bundle(coin),
             news_fundamental_hub.fetch_news(coin),
             news_fundamental_hub.fetch_fundamentals(coin),
@@ -86,6 +90,7 @@ class OrchestratorAgent:
             "df_htf": df_htf,
             "df_ltf": df_ltf,
             "df_5m": df_5m,
+            "df_1h": df_1h,
             "derivatives": derivatives,
             "news": news_items,
             "fundamentals": fundamentals,
@@ -331,8 +336,15 @@ class OrchestratorAgent:
         signal_source = "MARKET_ANALYSIS"
 
         min_conf = float(settings.get("MIN_CONFIDENCE_SCORE", 60.0))
-        strategy_version = str(settings.get("STRATEGY_VERSION", "MA_V3_MA20_60_5M15M"))
+        strategy_version = str(settings.get("STRATEGY_VERSION", "MA_V4_TRUE_15M_5M_MA20_60"))
         safety_state = db.get_market_signal_safety_state(strategy_version)
+        probation = safety_state["sample"] < 30
+        risk_pct_for_signal = min(
+            float(settings.get("DEFAULT_RISK_PER_TRADE_PCT", 1.5)),
+            0.5 if probation else 1.5,
+        )
+        if probation:
+            recommended_leverage = min(recommended_leverage, 3)
         if safety_state["tripped"]:
             veto_reasons.append(
                 "مدارشکن ایمنی عملکرد فعال است: در ۳۰ سیگنال تحویلی اخیر همین نسخه، "
@@ -382,7 +394,7 @@ class OrchestratorAgent:
             risk_reward_tp2=rr_tp2,
             recommended_leverage=recommended_leverage,
             margin_mode="ISOLATED",
-            risk_pct=float(settings.get("DEFAULT_RISK_PER_TRADE_PCT", 1.5)),
+            risk_pct=risk_pct_for_signal,
             executive_summary_fa=exec_summary_fa,
             invalidation_note_fa=invalidation_fa,
             ai_engine_used=engine_used,
@@ -440,6 +452,8 @@ class OrchestratorAgent:
                 "confidence_pass": confidence >= min_conf,
                 "chase_filter_pass": live_deviation_atr <= 0.90,
                 "performance_safety_breaker": safety_state,
+                "probation_mode": probation,
+                "probation_risk_pct": risk_pct_for_signal,
                 "veto_count": len(veto_reasons),
                 "actionable": actionable,
             },
