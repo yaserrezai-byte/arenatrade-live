@@ -63,6 +63,7 @@ class TelegramNotifierAgent:
             f"📡 <b>منبع:</b> {source}",
             "━━━━━━━━━━━━━━━━━━━━",
             f"📥 <b>ورود:</b> <code>${_fmt_price(sig['entry_low'])} — ${_fmt_price(sig['entry_high'])}</code>",
+            f"⚡️ <b>اهرم پیشنهادی:</b> <code>{int(sig['recommended_leverage'])}x ({sig.get('margin_mode', 'ISOLATED')})</code>",
             f"🎯 <b>TP1:</b> <code>${_fmt_price(sig['tp1'])}</code>",
             f"🎯 <b>TP2:</b> <code>${_fmt_price(sig['tp2'])}</code>",
             f"🎯 <b>TP3:</b> <code>${_fmt_price(sig['tp3'])}</code>",
