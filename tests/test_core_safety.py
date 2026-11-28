@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from agents.orchestrator_agent import ma20_60_allows_entry
 from agents.sr_agent import SupportResistanceAgent
 from agents.trend_agent import TrendDetectionAgent
+from agents.telegram_agent import TelegramNotifierAgent
 from core.database import Database
 from core.models import FuturesSignal
 from data_sources.market_data import MarketDataHub
@@ -93,6 +94,17 @@ class OhlcvQualityTests(unittest.TestCase):
 
 
 class SummaryIntegrityTests(unittest.TestCase):
+    def test_compact_signal_contains_only_fast_execution_levels(self):
+        text = TelegramNotifierAgent().format_compact_trade_message(valid_signal(symbol="ETH"))
+        self.assertIn("#ETH", text)
+        self.assertIn("ورود", text)
+        self.assertIn("TP1", text)
+        self.assertIn("TP2", text)
+        self.assertIn("TP3", text)
+        self.assertIn("STOP", text)
+        self.assertNotIn("RSI", text)
+        self.assertNotIn("امتیاز", text)
+
     def test_summary_reads_real_metric_keys(self):
         service = MarketScannerService()
         sig = valid_signal()
