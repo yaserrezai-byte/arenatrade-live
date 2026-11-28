@@ -53,6 +53,22 @@ class TelegramNotifierAgent:
             return self.format_copy_trade_message(sig)
         return self.format_market_analysis_message(sig)
 
+    def format_compact_trade_message(self, sig: Dict[str, Any]) -> str:
+        """Second, scan-friendly message containing only execution levels."""
+        direction = str(sig.get("direction", "NEUTRAL"))
+        icon = "🟢" if direction == "LONG" else "🔴"
+        source = "کپی‌تریدر" if sig.get("signal_source") == "COPY_TRADER" else "تحلیل بازار"
+        return "\n".join([
+            f"{icon} <b>خلاصه سریع سیگنال #{sig['symbol']} — {direction}</b>",
+            f"📡 <b>منبع:</b> {source}",
+            "━━━━━━━━━━━━━━━━━━━━",
+            f"📥 <b>ورود:</b> <code>${_fmt_price(sig['entry_low'])} — ${_fmt_price(sig['entry_high'])}</code>",
+            f"🎯 <b>TP1:</b> <code>${_fmt_price(sig['tp1'])}</code>",
+            f"🎯 <b>TP2:</b> <code>${_fmt_price(sig['tp2'])}</code>",
+            f"🎯 <b>TP3:</b> <code>${_fmt_price(sig['tp3'])}</code>",
+            f"🛑 <b>STOP:</b> <code>${_fmt_price(sig['stop_loss'])}</code>",
+        ])
+
     def format_copy_trade_message(self, sig: Dict[str, Any]) -> str:
         direction = sig["direction"]
         header_icon = "🐋🟢" if direction == "LONG" else "🐋🔴"
@@ -402,8 +418,21 @@ class TelegramNotifierAgent:
             symbol=signal_dict.get("symbol"),
             reply_markup=DEFAULT_SIGNAL_INLINE_KEYBOARD,
         )
+        compact_res = None
+        # Send a separate compact card only for executable signals. Watch-only
+        # analyses must never look like an entry instruction.
+        if res.get("ok") and (
+            signal_dict.get("actionable")
+            or signal_dict.get("signal_source") == "COPY_TRADER"
+        ):
+            compact_res = await self.send_html_message(
+                self.format_compact_trade_message(signal_dict),
+                msg_type=("COPY_SIGNAL_COMPACT" if msg_type == "COPY_SIGNAL" else "SIGNAL_COMPACT"),
+                symbol=signal_dict.get("symbol"),
+            )
         if res.get("ok"):
             db.mark_signal_telegram_sent(signal_dict["signal_id"])
+        res["compact_delivery"] = compact_res
         return res
 
 
