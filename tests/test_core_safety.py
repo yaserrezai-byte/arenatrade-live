@@ -98,6 +98,8 @@ class SummaryIntegrityTests(unittest.TestCase):
         text = TelegramNotifierAgent().format_compact_trade_message(valid_signal(symbol="ETH"))
         self.assertIn("#ETH", text)
         self.assertIn("ورود", text)
+        self.assertIn("اهرم پیشنهادی", text)
+        self.assertIn("3x", text)
         self.assertIn("TP1", text)
         self.assertIn("TP2", text)
         self.assertIn("TP3", text)
